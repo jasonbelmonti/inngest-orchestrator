@@ -30,6 +30,35 @@ describe("CLI entrypoint", () => {
 		expect(() => JSON.parse(stderr)).not.toThrow();
 	});
 
+	test("does not wait for stdin when --config-root is followed by another flag", async () => {
+		const cliPath = fileURLToPath(new URL("../cli.ts", import.meta.url));
+		const process = Bun.spawn({
+			cmd: ["bun", cliPath, "workflow", "save", "--config-root", "--bogus"],
+			stdin: "pipe",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+
+		const exit = await Promise.race([
+			process.exited.then((exitCode) => ({ timedOut: false as const, exitCode })),
+			Bun.sleep(250).then(() => ({ timedOut: true as const, exitCode: -1 })),
+		]);
+
+		if (exit.timedOut) {
+			process.kill();
+		}
+
+		const stderr = await new Response(process.stderr).text();
+
+		expect(exit.timedOut).toBe(false);
+		expect(exit.exitCode).toBe(1);
+		expect(() => JSON.parse(stderr)).not.toThrow();
+		expect(JSON.parse(stderr)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({ code: "invalid_cli_arguments" }),
+		});
+	});
+
 	test("emits pure JSON errors when invoked directly with bun", async () => {
 		const cliPath = fileURLToPath(new URL("../cli.ts", import.meta.url));
 		const process = Bun.spawn({

@@ -187,6 +187,27 @@ describe("workflow CLI", () => {
 		});
 	});
 
+	test("rejects flag-like values for --config-root before reading stdin", async () => {
+		let readAttempts = 0;
+
+		const result = await runCli(
+			["workflow", "save", "--config-root", "--bogus"],
+			{
+				readStdinText: async () => {
+					readAttempts += 1;
+					return JSON.stringify({ document: makeWorkflow() });
+				},
+			},
+		);
+
+		expect(readAttempts).toBe(0);
+		expect(result.exitCode).toBe(1);
+		expect(JSON.parse(result.stderr)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({ code: "invalid_cli_arguments" }),
+		});
+	});
+
 	test("does not read stdin from a TTY for workflow save", async () => {
 		let readAttempts = 0;
 		const configRoot = await createTempConfigRoot();

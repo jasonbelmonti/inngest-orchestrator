@@ -242,16 +242,16 @@ function parseWorkflowOptions(args: string[]) {
 	let configRoot: string | undefined;
 	const positional: string[] = [];
 
-	for (let index = 0; index < args.length; index += 1) {
-		const value = args[index]!;
-		if (value === "--config-root") {
-			const nextValue = args[index + 1];
-			if (!nextValue) {
-				throw new CliError({
-					code: "invalid_cli_arguments",
-					message: "--config-root requires a path value.",
-				});
-			}
+		for (let index = 0; index < args.length; index += 1) {
+			const value = args[index]!;
+			if (value === "--config-root") {
+				const nextValue = args[index + 1];
+				if (!nextValue || nextValue.startsWith("-")) {
+					throw new CliError({
+						code: "invalid_cli_arguments",
+						message: "--config-root requires a path value.",
+					});
+				}
 			configRoot = nextValue;
 			index += 1;
 			continue;
