@@ -26,6 +26,7 @@ export async function executeWorkflowCommand(
 	input: ExecuteWorkflowCommandInput,
 ): Promise<WorkflowCliResponse> {
 	const [subcommand, ...rawArgs] = input.args;
+	assertKnownWorkflowSubcommand(subcommand);
 	const { configRoot, positional } = parseWorkflowOptions(rawArgs);
 	const store = await WorkflowStore.open({ configRoot });
 
@@ -114,14 +115,8 @@ export async function executeWorkflowCommand(
 					compiled: save.compiled,
 					workflow: save.workflow,
 				},
-			};
-		}
-		default:
-			throw new CliError({
-				code: "invalid_cli_arguments",
-				message:
-					"Expected one of: workflow list, workflow read <id>, workflow validate, workflow save.",
-			});
+				};
+			}
 	}
 }
 
@@ -226,5 +221,24 @@ function assertNoPositionalArgs(positional: string[], command: WorkflowCliComman
 		code: "invalid_cli_arguments",
 		command,
 		message: `${command} does not accept positional arguments.`,
+	});
+}
+
+function assertKnownWorkflowSubcommand(
+	subcommand: string | undefined,
+): asserts subcommand is "list" | "read" | "validate" | "save" {
+	if (
+		subcommand === "list" ||
+		subcommand === "read" ||
+		subcommand === "validate" ||
+		subcommand === "save"
+	) {
+		return;
+	}
+
+	throw new CliError({
+		code: "invalid_cli_arguments",
+		message:
+			"Expected one of: workflow list, workflow read <id>, workflow validate, workflow save.",
 	});
 }

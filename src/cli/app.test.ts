@@ -124,6 +124,16 @@ describe("workflow CLI", () => {
 			error: expect.objectContaining({ code: "invalid_cli_arguments" }),
 		});
 	});
+
+	test("rejects invalid workflow subcommands before config-root resolution", async () => {
+		const result = await runCli(["workflow", "nonsense"]);
+
+		expect(result.exitCode).toBe(1);
+		expect(JSON.parse(result.stderr)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({ code: "invalid_cli_arguments" }),
+		});
+	});
 });
 
 async function createTempConfigRoot(input?: {
