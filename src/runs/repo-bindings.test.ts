@@ -219,6 +219,54 @@ describe("resolveRunLaunchRequest", () => {
 				}),
 			]),
 		});
+
+		await expect(resolveRunLaunchRequest([])).rejects.toMatchObject({
+			code: "invalid_run_launch_input",
+			issues: [
+				expect.objectContaining({
+					code: "invalid_shape",
+					path: "$",
+				}),
+			],
+		});
+	});
+
+	test("wraps missing config-root failures in the run-launch error model", async () => {
+		await expect(
+			resolveRunLaunchRequest({
+				workflowId: "cross-repo-bugfix",
+				configRoot: join(await createTempDirectory("missing-config-root"), "missing"),
+				repoBindings: {},
+			}),
+		).rejects.toMatchObject({
+			code: "invalid_run_launch_input",
+			issues: [
+				expect.objectContaining({
+					code: "config_root_invalid",
+					path: "$.configRoot",
+				}),
+			],
+		});
+	});
+
+	test("wraps missing workflow failures in the run-launch error model", async () => {
+		const configRoot = await createTempConfigRoot();
+
+		await expect(
+			resolveRunLaunchRequest({
+				workflowId: "missing-workflow",
+				configRoot,
+				repoBindings: {},
+			}),
+		).rejects.toMatchObject({
+			code: "invalid_run_launch_input",
+			issues: [
+				expect.objectContaining({
+					code: "workflow_not_found",
+					path: "$.workflowId",
+				}),
+			],
+		});
 	});
 
 	test("rejects non-absolute repo binding paths", async () => {
@@ -271,12 +319,90 @@ describe("resolveRunLaunchRequest", () => {
 					code: "repo_binding_path_not_directory",
 					path: "$.repoBindings.inngest-orchestrator",
 				}),
-			]),
+				]),
+			});
+	});
+
+	test("supports repo ids that would collide with Object prototype keys", async () => {
+		const configRoot = await createTempConfigRoot({
+			repositoryCatalog: {
+				schemaVersion: 1,
+				repositories: [{ id: "__proto__", label: "Prototype Repo" }],
+			},
+			workflows: {
+				"proto-workflow": makeWorkflow({
+					workflowId: "proto-workflow",
+					repositories: [{ id: "__proto__", required: true }],
+					nodes: [
+						{
+							id: "trigger",
+							kind: "trigger",
+							label: "Manual Trigger",
+							phaseId: "intake",
+							settings: { template: "trigger.manual" },
+						},
+						{
+							id: "implement",
+							kind: "task",
+							label: "Implement",
+							phaseId: "implementation",
+							target: { repoId: "__proto__" },
+							settings: {
+								template: "task.agent",
+								prompt: "Patch the bug and summarize the diff.",
+							},
+						},
+						{
+							id: "typecheck",
+							kind: "check",
+							label: "Typecheck",
+							phaseId: "output",
+							target: { repoId: "__proto__" },
+							settings: {
+								template: "check.shell",
+								command: "bun run typecheck",
+							},
+						},
+						{
+							id: "terminal",
+							kind: "terminal",
+							label: "Done",
+							phaseId: "output",
+							settings: { template: "terminal.complete" },
+						},
+					],
+				}),
+			},
 		});
+		const protoPath = await createTempDirectory("proto-repo");
+
+		const request = JSON.parse(`{
+			"workflowId": "proto-workflow",
+			"configRoot": ${JSON.stringify(configRoot)},
+			"repoBindings": {
+				"__proto__": ${JSON.stringify(protoPath)}
+			}
+		}`);
+
+		const result = await resolveRunLaunchRequest(request);
+
+		expect(result.repoBindings).toEqual([
+			{
+				repoId: "__proto__",
+				label: "Prototype Repo",
+				required: true,
+				status: "resolved",
+				resolvedPath: protoPath,
+			},
+		]);
 	});
 });
 
 async function createTempConfigRoot(input?: {
+	repositoryCatalog?: {
+		schemaVersion: 1;
+		repositories: { id: string; label: string }[];
+	};
 	workflows?: Record<string, unknown>;
 }) {
 	const root = await createTempDirectory("inngest-orchestrator-runs-");
@@ -287,7 +413,9 @@ async function createTempConfigRoot(input?: {
 
 	await Bun.write(
 		join(reposDirectory, "workspace.repos.json"),
-		serializeWorkflowRepositoryCatalog(makeRepositoryCatalog()),
+		serializeWorkflowRepositoryCatalog(
+			input?.repositoryCatalog ?? makeRepositoryCatalog(),
+		),
 	);
 
 	for (const [fileName, workflow] of Object.entries(input?.workflows ?? {})) {

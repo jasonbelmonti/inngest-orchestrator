@@ -4,7 +4,7 @@ import type { RunLaunchRequest } from "./types.ts";
 
 export function parseRunLaunchRequest(input: unknown): RunLaunchRequest {
 	const issues: RunLaunchIssue[] = [];
-	if (!isObject(input)) {
+	if (!isRecordObject(input)) {
 		throw new RunLaunchError({
 			code: "invalid_run_launch_input",
 			message: "Run launch request must be a JSON object.",
@@ -53,7 +53,7 @@ function readRequiredString(value: unknown, path: string, issues: RunLaunchIssue
 }
 
 function readRepoBindings(value: unknown, issues: RunLaunchIssue[]) {
-	if (!isObject(value) || Array.isArray(value)) {
+	if (!isRecordObject(value)) {
 		issues.push(
 			createRunLaunchIssue(
 				"invalid_shape",
@@ -64,7 +64,7 @@ function readRepoBindings(value: unknown, issues: RunLaunchIssue[]) {
 		return {};
 	}
 
-	const repoBindings: Record<string, string> = {};
+	const repoBindings = Object.create(null) as Record<string, string>;
 	for (const repoId of Object.keys(value).sort()) {
 		const bindingPath = value[repoId];
 		if (typeof bindingPath !== "string" || bindingPath.trim().length === 0) {
@@ -83,6 +83,6 @@ function readRepoBindings(value: unknown, issues: RunLaunchIssue[]) {
 	return repoBindings;
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object";
+function isRecordObject(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
 }

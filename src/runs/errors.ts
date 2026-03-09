@@ -1,5 +1,7 @@
 export type RunLaunchIssueCode =
 	| "invalid_shape"
+	| "config_root_invalid"
+	| "workflow_not_found"
 	| "missing_required_repo_binding"
 	| "unknown_repo_binding"
 	| "invalid_repo_binding_path"
