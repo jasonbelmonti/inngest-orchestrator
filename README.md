@@ -3,8 +3,8 @@
 Local workflow orchestrator for the broader Agent Cockpit initiative.
 
 Planning starts from [docs/inngest-orchestrator-mvp-plan.md](./docs/inngest-orchestrator-mvp-plan.md).
-The current implemented slice is the config-root workflow schema and storage contract documented in
-[docs/workflow-schema.md](./docs/workflow-schema.md).
+The current implemented slices are the config-root workflow schema and the workflow authoring CLI
+documented in [docs/workflow-schema.md](./docs/workflow-schema.md).
 
 To install dependencies:
 
@@ -18,6 +18,17 @@ To test:
 bun run test
 bun run typecheck
 ```
+
+Workflow CLI:
+
+```bash
+bun ./src/cli.ts workflow list --config-root ./examples/config-root
+bun ./src/cli.ts workflow read cross-repo-bugfix --config-root ./examples/config-root
+echo '{ "document": { ... } }' | bun ./src/cli.ts workflow validate --config-root ./examples/config-root
+```
+
+Use the direct `bun ./src/cli.ts ...` entrypoint for machine-consumable JSON output. `bun run <script>`
+adds Bun wrapper output on non-zero exits.
 
 Example config root:
 

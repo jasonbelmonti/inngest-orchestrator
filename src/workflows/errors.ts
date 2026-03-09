@@ -29,6 +29,8 @@ export type WorkflowErrorCode =
 	| "workflows_directory_not_found"
 	| "repository_catalog_not_found"
 	| "workflow_not_found"
+	| "workflow_save_conflict"
+	| "workflow_save_failed"
 	| "invalid_json"
 	| "invalid_repo_catalog"
 	| "invalid_workflow_document"

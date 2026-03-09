@@ -97,8 +97,8 @@ Workflow authoring CLI:
 
 - `workflow list --config-root <path>`
 - `workflow read <id> --config-root <path>`
-- `workflow validate --stdin --config-root <path>`
-- `workflow save --stdin --config-root <path>`
+- `workflow validate --config-root <path>` with a JSON envelope on stdin
+- `workflow save --config-root <path>` with a JSON envelope on stdin
 
 Local daemon API:
 
