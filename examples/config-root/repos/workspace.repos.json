@@ -1,0 +1,17 @@
+{
+  "repositories": [
+    {
+      "id": "agent-console",
+      "label": "Agent Console"
+    },
+    {
+      "id": "claudex",
+      "label": "Claudex"
+    },
+    {
+      "id": "inngest-orchestrator",
+      "label": "Inngest Orchestrator"
+    }
+  ],
+  "schemaVersion": 1
+}

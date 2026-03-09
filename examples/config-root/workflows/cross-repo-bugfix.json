@@ -1,0 +1,145 @@
+{
+  "edges": [
+    {
+      "condition": "always",
+      "id": "edge-trigger-implement",
+      "sourceId": "trigger",
+      "targetId": "implement"
+    },
+    {
+      "condition": "on_success",
+      "id": "edge-implement-approval",
+      "sourceId": "implement",
+      "targetId": "approval"
+    },
+    {
+      "condition": "on_approval",
+      "id": "edge-approval-typecheck",
+      "sourceId": "approval",
+      "targetId": "typecheck"
+    },
+    {
+      "condition": "on_success",
+      "id": "edge-typecheck-artifact",
+      "sourceId": "typecheck",
+      "targetId": "artifact"
+    },
+    {
+      "condition": "on_success",
+      "id": "edge-artifact-terminal",
+      "sourceId": "artifact",
+      "targetId": "terminal"
+    }
+  ],
+  "name": "Cross-Repo Bugfix",
+  "nodes": [
+    {
+      "id": "trigger",
+      "kind": "trigger",
+      "label": "Manual Trigger",
+      "phaseId": "intake",
+      "settings": {
+        "template": "trigger.manual"
+      }
+    },
+    {
+      "description": "Investigate the issue and draft a patch in Agent Console.",
+      "id": "implement",
+      "kind": "task",
+      "label": "Implement Patch",
+      "phaseId": "implementation",
+      "settings": {
+        "prompt": "Investigate the bug, patch it, and summarize the change set.",
+        "template": "task.agent"
+      },
+      "target": {
+        "repoId": "agent-console"
+      }
+    },
+    {
+      "id": "approval",
+      "kind": "gate",
+      "label": "Approval Gate",
+      "phaseId": "verification",
+      "settings": {
+        "template": "gate.approval"
+      }
+    },
+    {
+      "id": "typecheck",
+      "kind": "check",
+      "label": "Cross-Repo Typecheck",
+      "phaseId": "verification",
+      "settings": {
+        "command": "bun run typecheck",
+        "template": "check.shell"
+      },
+      "target": {
+        "repoId": "agent-console"
+      }
+    },
+    {
+      "id": "artifact",
+      "kind": "artifact",
+      "label": "Capture Summary",
+      "phaseId": "output",
+      "settings": {
+        "paths": [
+          "src/main"
+        ],
+        "template": "artifact.capture"
+      },
+      "target": {
+        "repoId": "agent-console"
+      }
+    },
+    {
+      "id": "terminal",
+      "kind": "terminal",
+      "label": "Workflow Complete",
+      "phaseId": "output",
+      "settings": {
+        "template": "terminal.complete"
+      }
+    }
+  ],
+  "phases": [
+    {
+      "id": "intake",
+      "label": "Intake",
+      "order": 1
+    },
+    {
+      "id": "implementation",
+      "label": "Implementation",
+      "order": 2
+    },
+    {
+      "id": "verification",
+      "label": "Verification",
+      "order": 3
+    },
+    {
+      "id": "output",
+      "label": "Output",
+      "order": 4
+    }
+  ],
+  "repositories": [
+    {
+      "id": "agent-console",
+      "required": true
+    },
+    {
+      "id": "claudex",
+      "required": false
+    },
+    {
+      "id": "inngest-orchestrator",
+      "required": true
+    }
+  ],
+  "schemaVersion": 1,
+  "summary": "Reference workflow showing config-root loading, logical repo bindings, and the supported v1 executable subset.",
+  "workflowId": "cross-repo-bugfix"
+}

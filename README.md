@@ -3,6 +3,8 @@
 Local workflow orchestrator for the broader Agent Cockpit initiative.
 
 Planning starts from [docs/inngest-orchestrator-mvp-plan.md](./docs/inngest-orchestrator-mvp-plan.md).
+The current implemented slice is the config-root workflow schema and storage contract documented in
+[docs/workflow-schema.md](./docs/workflow-schema.md).
 
 To install dependencies:
 
@@ -10,10 +12,21 @@ To install dependencies:
 bun install
 ```
 
-To run:
+To test:
 
 ```bash
-bun run index.ts
+bun run test
+bun run typecheck
 ```
 
-This project was created using `bun init` in bun v1.3.0. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+Example config root:
+
+- `examples/config-root`
+
+Recommended default:
+
+- keep real cross-project workflows in a dedicated workflow repo
+- point the orchestrator at that repo with `--config-root` or `AGENT_ORCHESTRATOR_CONFIG_ROOT`
+
+This project was created using `bun init` in bun v1.3.0. [Bun](https://bun.com) is a fast
+all-in-one JavaScript runtime.
