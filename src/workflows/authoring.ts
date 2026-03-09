@@ -1,5 +1,5 @@
-import { stat } from "node:fs/promises";
-import { extname, isAbsolute, join, relative, resolve } from "node:path";
+import { lstat, realpath, stat } from "node:fs/promises";
+import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { compileWorkflowDocument } from "./compiler.ts";
 import { WorkflowError, createIssue } from "./errors.ts";
 import { hashWorkflowDocument, serializeWorkflowDocument } from "./serialization.ts";
@@ -68,41 +68,37 @@ export async function saveWorkflowDocument(input: {
 		store: input.store,
 		document: input.options.document,
 	});
-	const summaries = await input.store.listWorkflows();
-	const targetFilePath = resolveSaveTargetPath({
+	const saveContext = await loadSaveContext({
 		store: input.store,
-		summaries,
 		workflowId: validated.document.workflowId,
 		requestedFilePath: input.options.filePath ?? undefined,
 	});
-	const existingSummary = summaries.find(
-		(summary) => resolve(summary.filePath) === targetFilePath,
-	);
-	const duplicateWorkflow = summaries.find(
-		(summary) =>
-			summary.workflowId === validated.document.workflowId &&
-			resolve(summary.filePath) !== targetFilePath,
-	);
 
-	if (duplicateWorkflow) {
+	if (saveContext.duplicateWorkflow) {
 		throw new WorkflowError({
 			code: "invalid_workflow_document",
 			message: `Workflow "${validated.document.workflowId}" already exists in another file.`,
-			filePath: targetFilePath,
+			filePath: saveContext.targetFilePath,
 			issues: [
 				createIssue(
 					"duplicate_workflow_id",
-					targetFilePath,
-					`Workflow id "${validated.document.workflowId}" is already declared in "${duplicateWorkflow.filePath}".`,
+					saveContext.targetFilePath,
+					`Workflow id "${validated.document.workflowId}" is already declared in "${saveContext.duplicateWorkflow.filePath}".`,
 				),
 			],
 		});
 	}
 
-	assertOptimisticSave(input.options.expectedContentHash ?? null, existingSummary, targetFilePath);
-
-	await Bun.write(targetFilePath, serializeWorkflowDocument(validated.document));
-	const fileStats = await stat(targetFilePath);
+	assertOptimisticSave({
+		expectedContentHash: input.options.expectedContentHash ?? null,
+		existingSummary: saveContext.existingSummary,
+		targetExists: saveContext.targetExists,
+		targetFilePath: saveContext.targetFilePath,
+	});
+	const fileStats = await persistWorkflowDocument({
+		document: validated.document,
+		targetFilePath: saveContext.targetFilePath,
+	});
 	const workflow: WorkflowRecord = {
 		workflowId: validated.document.workflowId,
 		name: validated.document.name,
@@ -111,81 +107,210 @@ export async function saveWorkflowDocument(input: {
 		nodeCount: validated.document.nodes.length,
 		edgeCount: validated.document.edges.length,
 		contentHash: validated.contentHash,
-		filePath: targetFilePath,
+		filePath: saveContext.targetFilePath,
 		document: validated.document,
 		repoCatalog: validated.repoCatalog,
 	};
 
 	return {
-		operation: existingSummary ? "updated" : "created",
+		operation: saveContext.targetExists ? "updated" : "created",
 		workflow,
 		compiled: validated.compiled,
 	};
 }
 
-function resolveSaveTargetPath(input: {
+async function loadSaveContext(input: {
 	store: WorkflowStore;
-	summaries: WorkflowSummary[];
 	workflowId: string;
 	requestedFilePath?: string;
 }) {
 	const workflowsDirectoryPath = input.store.getWorkflowsDirectoryPath();
-	const existingSummary = input.summaries.find(
+	const workflowFilePaths = await input.store.listWorkflowFilePaths();
+	const summaries = await readSaveSummaries(input.store, workflowFilePaths);
+	const existingWorkflowSummary = summaries.find(
 		(summary) => summary.workflowId === input.workflowId,
 	);
+	const targetFilePath = await resolveSaveTargetPath({
+		workflowsDirectoryPath,
+		workflowId: input.workflowId,
+		existingWorkflowFilePath: existingWorkflowSummary?.filePath,
+		requestedFilePath: input.requestedFilePath,
+	});
+	const existingSummary = summaries.find(
+		(summary) => resolve(summary.filePath) === targetFilePath,
+	);
+	const duplicateWorkflow = summaries.find(
+		(summary) =>
+			summary.workflowId === input.workflowId &&
+			resolve(summary.filePath) !== targetFilePath,
+	);
+	return {
+		targetFilePath,
+		existingSummary,
+		duplicateWorkflow,
+		targetExists: await doesPathExist(targetFilePath),
+	};
+}
+
+async function resolveSaveTargetPath(input: {
+	workflowsDirectoryPath: string;
+	workflowId: string;
+	existingWorkflowFilePath?: string;
+	requestedFilePath?: string;
+}) {
 	const candidatePath =
 		input.requestedFilePath && input.requestedFilePath.length > 0
 			? resolve(input.requestedFilePath)
-			: existingSummary
-				? resolve(existingSummary.filePath)
-				: join(workflowsDirectoryPath, `${input.workflowId}.json`);
-	const relativePath = relative(workflowsDirectoryPath, candidatePath);
-	if (
-		!isAbsolute(candidatePath) ||
-		relativePath.startsWith("..") ||
-		relativePath.length === 0 ||
-		extname(candidatePath) !== ".json"
-	) {
+			: input.existingWorkflowFilePath
+				? resolve(input.existingWorkflowFilePath)
+				: join(input.workflowsDirectoryPath, `${input.workflowId}.json`);
+	if (!isAbsolute(candidatePath) || extname(candidatePath) !== ".json") {
 		throw new WorkflowError({
 			code: "workflow_save_conflict",
 			message: "Workflow save target must be a JSON file inside the config-root workflows directory.",
 			filePath: candidatePath,
 		});
 	}
+	if (resolve(dirname(candidatePath)) !== resolve(input.workflowsDirectoryPath)) {
+		throw new WorkflowError({
+			code: "workflow_save_conflict",
+			message:
+				"Workflow save target must be a top-level JSON file inside the config-root workflows directory.",
+			filePath: candidatePath,
+		});
+	}
+	await assertSafeSaveTarget(input.workflowsDirectoryPath, candidatePath);
 	return candidatePath;
 }
 
-function assertOptimisticSave(
-	expectedContentHash: string | null,
-	existingSummary: WorkflowSummary | undefined,
-	targetFilePath: string,
-) {
-	if (!existingSummary) {
-		if (expectedContentHash === null) {
+function assertOptimisticSave(input: {
+	expectedContentHash: string | null;
+	existingSummary: WorkflowSummary | undefined;
+	targetExists: boolean;
+	targetFilePath: string;
+}) {
+	if (!input.existingSummary) {
+		if (input.expectedContentHash !== null) {
+			throw new WorkflowError({
+				code: "workflow_save_conflict",
+				message: "Cannot apply an optimistic save baseline to a workflow file that does not exist yet.",
+				filePath: input.targetFilePath,
+			});
+		}
+		if (!input.targetExists) {
 			return;
 		}
-		throw new WorkflowError({
-			code: "workflow_save_conflict",
-			message: "Cannot apply an optimistic save baseline to a workflow file that does not exist yet.",
-			filePath: targetFilePath,
-		});
+		return;
 	}
 
-	if (expectedContentHash === null) {
+	if (input.expectedContentHash === null) {
 		throw new WorkflowError({
 			code: "workflow_save_conflict",
 			message: "Saving an existing workflow requires the previous content hash.",
-			filePath: targetFilePath,
+			filePath: input.targetFilePath,
 		});
 	}
 
-	if (expectedContentHash === existingSummary.contentHash) {
+	if (input.expectedContentHash === input.existingSummary.contentHash) {
 		return;
 	}
 
 	throw new WorkflowError({
 		code: "workflow_save_conflict",
 		message: "Workflow content has changed since the caller last read it.",
-		filePath: targetFilePath,
+		filePath: input.targetFilePath,
 	});
+}
+
+async function readSaveSummaries(store: WorkflowStore, filePaths: string[]) {
+	const summaries: WorkflowSummary[] = [];
+	for (const filePath of filePaths) {
+		try {
+			const record = await store.readWorkflowRecordFromFilePath(filePath);
+			const { document, repoCatalog, ...summary } = record;
+			summaries.push(summary);
+		} catch (error) {
+			if (error instanceof WorkflowError) {
+				continue;
+			}
+			throw error;
+		}
+	}
+	return summaries;
+}
+
+async function assertSafeSaveTarget(
+	workflowsDirectoryPath: string,
+	targetFilePath: string,
+) {
+	const workflowsRealPath = await realpath(workflowsDirectoryPath);
+	const targetParentRealPath = await realpath(dirname(targetFilePath));
+	if (workflowsRealPath !== targetParentRealPath) {
+		throw new WorkflowError({
+			code: "workflow_save_conflict",
+			message:
+				"Workflow save target must resolve inside the config-root workflows directory.",
+			filePath: targetFilePath,
+		});
+	}
+
+	try {
+		const targetStats = await lstat(targetFilePath);
+		if (targetStats.isSymbolicLink()) {
+			throw new WorkflowError({
+				code: "workflow_save_conflict",
+				message: "Workflow save target must not be a symbolic link.",
+				filePath: targetFilePath,
+			});
+		}
+	} catch (error) {
+		if (isPathNotFoundError(error)) {
+			return;
+		}
+		if (error instanceof WorkflowError) {
+			throw error;
+		}
+		throw new WorkflowError({
+			code: "workflow_save_conflict",
+			message: "Failed to validate workflow save target.",
+			filePath: targetFilePath,
+			cause: error,
+		});
+	}
+}
+
+async function doesPathExist(path: string) {
+	try {
+		await lstat(path);
+		return true;
+	} catch (error) {
+		if (isPathNotFoundError(error)) {
+			return false;
+		}
+		throw error;
+	}
+}
+
+function isPathNotFoundError(error: unknown) {
+	return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+async function persistWorkflowDocument(input: {
+	document: WorkflowDocument;
+	targetFilePath: string;
+}) {
+	try {
+		await Bun.write(
+			input.targetFilePath,
+			serializeWorkflowDocument(input.document),
+		);
+		return await stat(input.targetFilePath);
+	} catch (error) {
+		throw new WorkflowError({
+			code: "workflow_save_failed",
+			message: "Failed to persist workflow document.",
+			filePath: input.targetFilePath,
+			cause: error,
+		});
+	}
 }

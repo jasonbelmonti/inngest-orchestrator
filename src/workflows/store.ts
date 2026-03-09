@@ -56,6 +56,15 @@ export class WorkflowStore {
 		);
 	}
 
+	async listWorkflowFilePaths() {
+		return this.resolveWorkflowFilePaths();
+	}
+
+	async readWorkflowRecordFromFilePath(filePath: string) {
+		const repoCatalog = await this.readRepositoryCatalog();
+		return this.loadWorkflowRecord(filePath, repoCatalog);
+	}
+
 	async readWorkflow(workflowId: string): Promise<WorkflowRecord> {
 		const records = await this.loadWorkflowRecords();
 		const record = records.find((candidate) => candidate.workflowId === workflowId);
@@ -101,7 +110,7 @@ export class WorkflowStore {
 
 	private async loadWorkflowRecords(): Promise<WorkflowRecord[]> {
 		const repoCatalog = await this.readRepositoryCatalog();
-		const filePaths = await this.listWorkflowFilePaths();
+		const filePaths = await this.resolveWorkflowFilePaths();
 		const records = await Promise.all(
 			filePaths.map((filePath) => this.loadWorkflowRecord(filePath, repoCatalog)),
 		);
@@ -118,7 +127,7 @@ export class WorkflowStore {
 		return records.sort((left, right) => left.workflowId.localeCompare(right.workflowId));
 	}
 
-	private async listWorkflowFilePaths() {
+	private async resolveWorkflowFilePaths() {
 		try {
 			const stats = await stat(this.workflowsDirectoryPath);
 			if (!stats.isDirectory()) {

@@ -134,6 +134,39 @@ describe("workflow CLI", () => {
 			error: expect.objectContaining({ code: "invalid_cli_arguments" }),
 		});
 	});
+
+	test("rejects workflow read calls that omit the workflow id before config-root resolution", async () => {
+		const result = await runCli(["workflow", "read"]);
+
+		expect(result.exitCode).toBe(1);
+		expect(JSON.parse(result.stderr)).toMatchObject({
+			ok: false,
+			command: "workflow.read",
+			error: expect.objectContaining({ code: "invalid_cli_arguments" }),
+		});
+	});
+
+	test("rejects extra positional arguments before config-root resolution", async () => {
+		const result = await runCli(["workflow", "list", "extra"]);
+
+		expect(result.exitCode).toBe(1);
+		expect(JSON.parse(result.stderr)).toMatchObject({
+			ok: false,
+			command: "workflow.list",
+			error: expect.objectContaining({ code: "invalid_cli_arguments" }),
+		});
+	});
+
+	test("rejects missing stdin before config-root resolution", async () => {
+		const result = await runCli(["workflow", "save"]);
+
+		expect(result.exitCode).toBe(1);
+		expect(JSON.parse(result.stderr)).toMatchObject({
+			ok: false,
+			command: "workflow.save",
+			error: expect.objectContaining({ code: "invalid_cli_input" }),
+		});
+	});
 });
 
 async function createTempConfigRoot(input?: {

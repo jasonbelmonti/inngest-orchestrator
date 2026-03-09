@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { saveWorkflowDocument, validateWorkflowDocumentInput } from "./authoring.ts";
@@ -120,6 +120,117 @@ describe("workflow authoring", () => {
 
 		expect(save.operation).toBe("updated");
 		expect(save.workflow.name).toBe("Cross-Repo Bugfix Updated");
+	});
+
+	test("saves workflows even when another file in the config root is invalid", async () => {
+		const configRoot = await createTempConfigRoot();
+		const store = await WorkflowStore.open({ configRoot });
+		await Bun.write(join(configRoot, "workflows", "broken.json"), "{ invalid json\n");
+
+		const save = await saveWorkflowDocument({
+			store,
+			options: {
+				document: makeWorkflow({
+					workflowId: "ship-feature",
+					name: "Ship Feature",
+				}),
+			},
+		});
+
+		expect(save.operation).toBe("created");
+		expect(save.workflow.workflowId).toBe("ship-feature");
+	});
+
+	test("repairs an invalid target workflow file without requiring a content hash", async () => {
+		const configRoot = await createTempConfigRoot();
+		const store = await WorkflowStore.open({ configRoot });
+		await Bun.write(
+			join(configRoot, "workflows", "ship-feature.json"),
+			"{ invalid json\n",
+		);
+
+		const save = await saveWorkflowDocument({
+			store,
+			options: {
+				document: makeWorkflow({
+					workflowId: "ship-feature",
+					name: "Ship Feature",
+				}),
+			},
+		});
+
+		expect(save.operation).toBe("updated");
+		expect(save.workflow.workflowId).toBe("ship-feature");
+	});
+
+	test("rejects nested workflow save targets that the store cannot read back", async () => {
+		const configRoot = await createTempConfigRoot();
+		const store = await WorkflowStore.open({ configRoot });
+
+		await expect(
+			saveWorkflowDocument({
+				store,
+				options: {
+					document: makeWorkflow({
+						workflowId: "ship-feature",
+						name: "Ship Feature",
+					}),
+					filePath: join(configRoot, "workflows", "nested", "ship-feature.json"),
+				},
+			}),
+		).rejects.toMatchObject({
+			code: "workflow_save_conflict",
+		});
+	});
+
+	test("rejects symbolic-link save targets", async () => {
+		const configRoot = await createTempConfigRoot();
+		const store = await WorkflowStore.open({ configRoot });
+		const externalTarget = join(configRoot, "external.json");
+		await Bun.write(externalTarget, "{}\n");
+		await symlink(
+			externalTarget,
+			join(configRoot, "workflows", "ship-feature.json"),
+		);
+
+		await expect(
+			saveWorkflowDocument({
+				store,
+				options: {
+					document: makeWorkflow({
+						workflowId: "ship-feature",
+						name: "Ship Feature",
+					}),
+				},
+			}),
+		).rejects.toMatchObject({
+			code: "workflow_save_conflict",
+		});
+	});
+
+	test("classifies workflow persistence failures as workflow save errors", async () => {
+		const configRoot = await createTempConfigRoot();
+		const store = await WorkflowStore.open({ configRoot });
+		const workflowsDirectory = join(configRoot, "workflows");
+
+		await chmod(workflowsDirectory, 0o500);
+		try {
+			await expect(
+				saveWorkflowDocument({
+					store,
+					options: {
+						document: makeWorkflow({
+							workflowId: "ship-feature",
+							name: "Ship Feature",
+						}),
+					},
+				}),
+			).rejects.toMatchObject({
+				code: "workflow_save_failed",
+			});
+		} finally {
+			await chmod(workflowsDirectory, 0o700);
+		}
 	});
 });
 
