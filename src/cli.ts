@@ -3,10 +3,10 @@ import { stdin } from "node:process";
 import { runCli } from "./cli/app.ts";
 
 const args = Bun.argv.slice(2);
-const needsStdin =
-	args[0] === "workflow" && (args[1] === "validate" || args[1] === "save");
-const stdinText = needsStdin ? await readStdinText() : undefined;
-const result = await runCli(args, { stdinText });
+const result = await runCli(args, {
+	stdinIsTTY: stdin.isTTY,
+	readStdinText,
+});
 
 if (result.stdout.length > 0) {
 	process.stdout.write(result.stdout);

@@ -157,9 +157,49 @@ describe("workflow CLI", () => {
 		});
 	});
 
-	test("rejects missing stdin before config-root resolution", async () => {
-		const result = await runCli(["workflow", "save"]);
+	test("rejects missing stdin when workflow save is otherwise valid", async () => {
+		const configRoot = await createTempConfigRoot();
+		const result = await runCli(["workflow", "save", "--config-root", configRoot]);
 
+		expect(result.exitCode).toBe(1);
+		expect(JSON.parse(result.stderr)).toMatchObject({
+			ok: false,
+			command: "workflow.save",
+			error: expect.objectContaining({ code: "invalid_cli_input" }),
+		});
+	});
+
+	test("does not read stdin for invalid workflow flags", async () => {
+		let readAttempts = 0;
+
+		const result = await runCli(["workflow", "save", "--bogus"], {
+			readStdinText: async () => {
+				readAttempts += 1;
+				return JSON.stringify({ document: makeWorkflow() });
+			},
+		});
+
+		expect(readAttempts).toBe(0);
+		expect(result.exitCode).toBe(1);
+		expect(JSON.parse(result.stderr)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({ code: "invalid_cli_arguments" }),
+		});
+	});
+
+	test("does not read stdin from a TTY for workflow save", async () => {
+		let readAttempts = 0;
+		const configRoot = await createTempConfigRoot();
+
+		const result = await runCli(["workflow", "save", "--config-root", configRoot], {
+			stdinIsTTY: true,
+			readStdinText: async () => {
+				readAttempts += 1;
+				return JSON.stringify({ document: makeWorkflow() });
+			},
+		});
+
+		expect(readAttempts).toBe(0);
 		expect(result.exitCode).toBe(1);
 		expect(JSON.parse(result.stderr)).toMatchObject({
 			ok: false,

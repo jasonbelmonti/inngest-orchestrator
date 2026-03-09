@@ -5,6 +5,31 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
 describe("CLI entrypoint", () => {
+	test("does not wait for stdin when workflow flags are invalid", async () => {
+		const cliPath = fileURLToPath(new URL("../cli.ts", import.meta.url));
+		const process = Bun.spawn({
+			cmd: ["bun", cliPath, "workflow", "save", "--bogus"],
+			stdin: "pipe",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+
+		const exit = await Promise.race([
+			process.exited.then((exitCode) => ({ timedOut: false as const, exitCode })),
+			Bun.sleep(250).then(() => ({ timedOut: true as const, exitCode: -1 })),
+		]);
+
+		if (exit.timedOut) {
+			process.kill();
+		}
+
+		const stderr = await new Response(process.stderr).text();
+
+		expect(exit.timedOut).toBe(false);
+		expect(exit.exitCode).toBe(1);
+		expect(() => JSON.parse(stderr)).not.toThrow();
+	});
+
 	test("emits pure JSON errors when invoked directly with bun", async () => {
 		const cliPath = fileURLToPath(new URL("../cli.ts", import.meta.url));
 		const process = Bun.spawn({

@@ -1,16 +1,21 @@
 import { CliError } from "./errors.ts";
 import type { CliRunResult, WorkflowCliResponse } from "./types.ts";
 import {
-	executeWorkflowCommand,
+	executePreparedWorkflowCommand,
+	prepareWorkflowCommandArgs,
 	toWorkflowCliErrorResponse,
 } from "./workflow.ts";
 
 export async function runCli(
 	args: string[],
-	input: { stdinText?: string } = {},
+	input: {
+		stdinText?: string;
+		stdinIsTTY?: boolean;
+		readStdinText?: () => Promise<string>;
+	} = {},
 ): Promise<CliRunResult> {
 	try {
-		const response = await executeCli(args, input.stdinText);
+		const response = await executeCli(args, input);
 		return {
 			exitCode: 0,
 			stdout: serializeJson(response),
@@ -28,7 +33,11 @@ export async function runCli(
 
 async function executeCli(
 	args: string[],
-	stdinText: string | undefined,
+	input: {
+		stdinText?: string;
+		stdinIsTTY?: boolean;
+		readStdinText?: () => Promise<string>;
+	},
 ): Promise<WorkflowCliResponse> {
 	const [rootCommand, ...rest] = args;
 	if (rootCommand !== "workflow") {
@@ -37,10 +46,9 @@ async function executeCli(
 			message: "Expected the root CLI command to be workflow.",
 		});
 	}
-	return executeWorkflowCommand({
-		args: rest,
-		stdinText,
-	});
+	const preparation = prepareWorkflowCommandArgs(rest);
+	const stdinText = await resolveCliStdinText(preparation, input);
+	return executePreparedWorkflowCommand(preparation, stdinText);
 }
 
 function serializeJson(value: WorkflowCliResponse) {
@@ -64,4 +72,31 @@ function inferWorkflowCommand(args: string[]) {
 		default:
 			return undefined;
 	}
+}
+
+async function resolveCliStdinText(
+	preparation: ReturnType<typeof prepareWorkflowCommandArgs>,
+	input: {
+		stdinText?: string;
+		stdinIsTTY?: boolean;
+		readStdinText?: () => Promise<string>;
+	},
+) {
+	if (input.stdinText !== undefined) {
+		return input.stdinText;
+	}
+
+	if (!preparation.requiresStdin) {
+		return undefined;
+	}
+
+	if (input.stdinIsTTY) {
+		return undefined;
+	}
+
+	if (!input.readStdinText) {
+		return undefined;
+	}
+
+	return input.readStdinText();
 }
