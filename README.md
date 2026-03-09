@@ -19,6 +19,14 @@ bun run test
 bun run typecheck
 ```
 
+Workflow CLI:
+
+```bash
+bun run workflow list --config-root ./examples/config-root
+bun run workflow read cross-repo-bugfix --config-root ./examples/config-root
+echo '{ "document": { ... } }' | bun run workflow validate --config-root ./examples/config-root
+```
+
 Example config root:
 
 - `examples/config-root`

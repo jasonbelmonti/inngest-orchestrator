@@ -1,0 +1,153 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { runCli } from "./app.ts";
+import { serializeWorkflowRepositoryCatalog } from "../workflows/serialization.ts";
+import { makeRepositoryCatalog, makeWorkflow } from "../workflows/test-fixtures.ts";
+
+const tempConfigRoots: string[] = [];
+
+afterEach(async () => {
+	await Promise.all(
+		tempConfigRoots.map((directory) =>
+			rm(directory, { recursive: true, force: true }),
+		),
+	);
+	tempConfigRoots.length = 0;
+});
+
+describe("workflow CLI", () => {
+	test("lists workflows as machine-consumable JSON", async () => {
+		const configRoot = await createTempConfigRoot({
+			workflows: {
+				"cross-repo-bugfix": makeWorkflow(),
+			},
+		});
+
+		const result = await runCli([
+			"workflow",
+			"list",
+			"--config-root",
+			configRoot,
+		]);
+
+		expect(result.exitCode).toBe(0);
+		expect(result.stderr).toBe("");
+		expect(JSON.parse(result.stdout)).toMatchObject({
+			ok: true,
+			command: "workflow.list",
+			workflows: [expect.objectContaining({ workflowId: "cross-repo-bugfix" })],
+		});
+	});
+
+	test("reads workflows as machine-consumable JSON", async () => {
+		const configRoot = await createTempConfigRoot({
+			workflows: {
+				"cross-repo-bugfix": makeWorkflow(),
+			},
+		});
+
+		const result = await runCli([
+			"workflow",
+			"read",
+			"cross-repo-bugfix",
+			"--config-root",
+			configRoot,
+		]);
+
+		expect(result.exitCode).toBe(0);
+		expect(JSON.parse(result.stdout)).toMatchObject({
+			ok: true,
+			command: "workflow.read",
+			workflow: expect.objectContaining({
+				workflowId: "cross-repo-bugfix",
+				contentHash: expect.any(String),
+			}),
+		});
+	});
+
+	test("validates stdin envelopes and returns compiled workflow data", async () => {
+		const configRoot = await createTempConfigRoot();
+
+		const result = await runCli(
+			["workflow", "validate", "--config-root", configRoot],
+			{
+				stdinText: JSON.stringify({ document: makeWorkflow() }),
+			},
+		);
+
+		expect(result.exitCode).toBe(0);
+		expect(JSON.parse(result.stdout)).toMatchObject({
+			ok: true,
+			command: "workflow.validate",
+			validation: expect.objectContaining({
+				contentHash: expect.any(String),
+				compiled: expect.objectContaining({ workflowId: "cross-repo-bugfix" }),
+			}),
+		});
+	});
+
+	test("rejects optimistic saves that omit a baseline hash for existing workflows", async () => {
+		const configRoot = await createTempConfigRoot({
+			workflows: {
+				"cross-repo-bugfix": makeWorkflow(),
+			},
+		});
+
+		const result = await runCli(
+			["workflow", "save", "--config-root", configRoot],
+			{
+				stdinText: JSON.stringify({
+					document: makeWorkflow({
+						name: "Updated Name",
+					}),
+				}),
+			},
+		);
+
+		expect(result.exitCode).toBe(1);
+		expect(result.stdout).toBe("");
+		expect(JSON.parse(result.stderr)).toMatchObject({
+			ok: false,
+			command: "workflow.save",
+			error: expect.objectContaining({ code: "workflow_save_conflict" }),
+		});
+	});
+
+	test("rejects invalid root commands with a CLI argument error", async () => {
+		const result = await runCli(["nonsense"]);
+
+		expect(result.exitCode).toBe(1);
+		expect(JSON.parse(result.stderr)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({ code: "invalid_cli_arguments" }),
+		});
+	});
+});
+
+async function createTempConfigRoot(input?: {
+	workflows?: Record<string, unknown>;
+}) {
+	const root = await mkdtemp(join(tmpdir(), "inngest-orchestrator-cli-"));
+	tempConfigRoots.push(root);
+
+	const reposDirectory = join(root, "repos");
+	const workflowsDirectory = join(root, "workflows");
+	await mkdir(reposDirectory, { recursive: true });
+	await mkdir(workflowsDirectory, { recursive: true });
+
+	await Bun.write(
+		join(reposDirectory, "workspace.repos.json"),
+		serializeWorkflowRepositoryCatalog(makeRepositoryCatalog()),
+	);
+
+	for (const [fileName, workflow] of Object.entries(input?.workflows ?? {})) {
+		await Bun.write(
+			join(workflowsDirectory, `${fileName}.json`),
+			`${JSON.stringify(workflow, null, 2)}\n`,
+		);
+	}
+
+	return root;
+}

@@ -45,6 +45,10 @@ export class WorkflowStore {
 		return this.repositoryCatalogPromise;
 	}
 
+	getWorkflowsDirectoryPath() {
+		return this.workflowsDirectoryPath;
+	}
+
 	async listWorkflows(): Promise<WorkflowSummary[]> {
 		const records = await this.loadWorkflowRecords();
 		return records.map(({ document, repoCatalog, ...summary }) => summary).sort((left, right) =>

@@ -4,8 +4,10 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "cli": "bun run ./src/cli.ts",
     "test": "bun test ./src",
-    "typecheck": "bun x tsc --noEmit"
+    "typecheck": "bun x tsc --noEmit",
+    "workflow": "bun run ./src/cli.ts workflow"
   },
   "devDependencies": {
     "@types/bun": "latest"
