@@ -115,6 +115,33 @@ describe("workflow CLI", () => {
 		});
 	});
 
+	test("rejects non-string save file paths instead of falling back to the default target", async () => {
+		const configRoot = await createTempConfigRoot();
+
+		const result = await runCli(
+			["workflow", "save", "--config-root", configRoot],
+			{
+				stdinText: JSON.stringify({
+					document: makeWorkflow({
+						workflowId: "ship-feature",
+						name: "Ship Feature",
+					}),
+					filePath: 123,
+				}),
+			},
+		);
+
+		expect(result.exitCode).toBe(1);
+		expect(JSON.parse(result.stderr)).toMatchObject({
+			ok: false,
+			command: "workflow.save",
+			error: expect.objectContaining({ code: "invalid_cli_input" }),
+		});
+		expect(
+			await Bun.file(join(configRoot, "workflows", "ship-feature.json")).exists(),
+		).toBe(false);
+	});
+
 	test("rejects invalid root commands with a CLI argument error", async () => {
 		const result = await runCli(["nonsense"]);
 

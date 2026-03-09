@@ -92,15 +92,19 @@ export async function executePreparedWorkflowCommand(
 					command: "workflow.save",
 					message: "workflow save expects a JSON object with a document field on stdin.",
 				});
-			}
-			const save = await saveWorkflowDocument({
-				store,
-				options: {
-					document: envelope.document,
-					expectedContentHash: envelope.expectedContentHash ?? null,
-					filePath: envelope.filePath ?? null,
-				},
-			});
+				}
+				const save = await saveWorkflowDocument({
+					store,
+					options: {
+						document: envelope.document,
+						expectedContentHash: envelope.expectedContentHash ?? null,
+						filePath: parseOptionalStringInput(
+							envelope.filePath,
+							"filePath",
+							"workflow.save",
+						),
+					},
+				});
 			return {
 				ok: true,
 				command: "workflow.save",
@@ -242,16 +246,16 @@ function parseWorkflowOptions(args: string[]) {
 	let configRoot: string | undefined;
 	const positional: string[] = [];
 
-		for (let index = 0; index < args.length; index += 1) {
-			const value = args[index]!;
-			if (value === "--config-root") {
-				const nextValue = args[index + 1];
-				if (!nextValue || nextValue.startsWith("-")) {
-					throw new CliError({
-						code: "invalid_cli_arguments",
-						message: "--config-root requires a path value.",
-					});
-				}
+	for (let index = 0; index < args.length; index += 1) {
+		const value = args[index]!;
+		if (value === "--config-root") {
+			const nextValue = args[index + 1];
+			if (!nextValue || nextValue.startsWith("-")) {
+				throw new CliError({
+					code: "invalid_cli_arguments",
+					message: "--config-root requires a path value.",
+				});
+			}
 			configRoot = nextValue;
 			index += 1;
 			continue;
@@ -292,6 +296,26 @@ function parseJsonEnvelope<T>(stdinText: string | undefined, command: WorkflowCl
 
 function hasDocument(value: unknown): value is { document: unknown } {
 	return value !== null && typeof value === "object" && "document" in value;
+}
+
+function parseOptionalStringInput(
+	value: unknown,
+	fieldName: string,
+	command: WorkflowCliCommand,
+) {
+	if (value === undefined || value === null) {
+		return null;
+	}
+
+	if (typeof value === "string") {
+		return value;
+	}
+
+	throw new CliError({
+		code: "invalid_cli_input",
+		command,
+		message: `${command} expects ${fieldName} to be a string or null when provided.`,
+	});
 }
 
 function assertNoPositionalArgs(positional: string[], command: WorkflowCliCommand) {
