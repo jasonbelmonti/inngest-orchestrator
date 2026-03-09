@@ -83,6 +83,19 @@ export function appendExecutableGraphIssues(
 				),
 			);
 		}
+
+		if (
+			(node.kind === "task" || node.kind === "check" || node.kind === "artifact") &&
+			!outgoing.some((edge) => edge.condition === "on_success")
+		) {
+			issues.push(
+				createIssue(
+					"missing_required_transition",
+					`$.nodes[${index}].id`,
+					`Node "${node.id}" requires an "on_success" transition in the v1 executable subset.`,
+				),
+			);
+		}
 	}
 
 	appendCycleIssues({

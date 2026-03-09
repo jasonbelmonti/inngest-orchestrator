@@ -165,6 +165,39 @@ describe("compileWorkflowDocument", () => {
 					expect.objectContaining({ code: "cycle_detected" }),
 					expect.objectContaining({ code: "unreachable_node" }),
 				]),
+				}),
+			);
+	});
+
+	test("rejects step nodes that do not define a success transition", () => {
+		const workflow = makeWorkflow({
+			edges: [
+				{
+					id: "edge-trigger-implement",
+					sourceId: "trigger",
+					targetId: "implement",
+					condition: "always",
+				},
+				{
+					id: "edge-implement-terminal-on-failure",
+					sourceId: "implement",
+					targetId: "terminal",
+					condition: "on_failure",
+				},
+			],
+		});
+
+		expect(() =>
+			compileWorkflowDocument({
+				document: workflow,
+				repoCatalog: makeRepositoryCatalog(),
+			}),
+		).toThrow(
+			expect.objectContaining({
+				code: "invalid_executable_workflow",
+				issues: expect.arrayContaining([
+					expect.objectContaining({ code: "missing_required_transition" }),
+				]),
 			}),
 		);
 	});

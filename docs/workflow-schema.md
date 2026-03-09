@@ -101,7 +101,7 @@ The compiler also enforces the v1 executable graph subset:
 
 - exactly one `trigger` node and one `terminal` node
 - no cycles
-- no merge nodes with multiple incoming edges
+- no merge nodes with multiple predecessor nodes
 - no fan-out through duplicate outgoing conditions from the same node
 - all nodes must be reachable from the trigger
 - outgoing edge conditions must match the source node kind
