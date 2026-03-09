@@ -57,16 +57,37 @@ export interface WorkflowPhase {
 	order: number;
 }
 
-export interface WorkflowNode {
+interface WorkflowNodeBase {
 	id: string;
-	kind: WorkflowNodeKind;
 	label: string;
 	phaseId: string;
 	description?: string;
 	station?: string;
-	target?: WorkflowExecutionTarget;
 	settings: JsonObject;
 }
+
+export type WorkflowNode =
+	| (WorkflowNodeBase & {
+			kind: "trigger";
+	  })
+	| (WorkflowNodeBase & {
+			kind: "task";
+			target: WorkflowExecutionTarget;
+	  })
+	| (WorkflowNodeBase & {
+			kind: "check";
+			target: WorkflowExecutionTarget;
+	  })
+	| (WorkflowNodeBase & {
+			kind: "gate";
+	  })
+	| (WorkflowNodeBase & {
+			kind: "artifact";
+			target: WorkflowExecutionTarget;
+	  })
+	| (WorkflowNodeBase & {
+			kind: "terminal";
+	  });
 
 export interface WorkflowEdge {
 	id: string;

@@ -1,4 +1,5 @@
 import { WorkflowError, createIssue, type WorkflowValidationIssue } from "./errors.ts";
+import { appendExecutableGraphIssues } from "./executable-graph.ts";
 import type {
 	CompiledWorkflowDocument,
 	CompiledWorkflowNode,
@@ -32,6 +33,8 @@ export function compileWorkflowDocument(input: {
 	const nodes = input.document.nodes
 		.map((node, index) => compileNode(node, index, issues))
 		.filter((node): node is CompiledWorkflowNode => node !== null);
+
+	appendExecutableGraphIssues(input.document, issues);
 
 	if (issues.length > 0) {
 		throw new WorkflowError({
@@ -77,16 +80,6 @@ function compileNode(
 			if (!validateTemplate(node, index, issues, "task.agent")) {
 				return null;
 			}
-			if (!node.target) {
-				issues.push(
-					createIssue(
-						"missing_repo_target",
-						`$.nodes[${index}].target`,
-						`Node "${node.id}" requires a repo target.`,
-					),
-				);
-				return null;
-			}
 			return {
 				id: node.id,
 				kind: "task",
@@ -119,16 +112,6 @@ function compileNode(
 			if (!validateTemplate(node, index, issues, "check.shell")) {
 				return null;
 			}
-			if (!node.target) {
-				issues.push(
-					createIssue(
-						"missing_repo_target",
-						`$.nodes[${index}].target`,
-						`Node "${node.id}" requires a repo target.`,
-					),
-				);
-				return null;
-			}
 			return {
 				id: node.id,
 				kind: "check",
@@ -145,16 +128,6 @@ function compileNode(
 			};
 		case "artifact":
 			if (!validateTemplate(node, index, issues, "artifact.capture")) {
-				return null;
-			}
-			if (!node.target) {
-				issues.push(
-					createIssue(
-						"missing_repo_target",
-						`$.nodes[${index}].target`,
-						`Node "${node.id}" requires a repo target.`,
-					),
-				);
 				return null;
 			}
 			return {

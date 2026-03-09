@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { resolve } from "node:path";
 import { compileWorkflowDocument } from "./compiler.ts";
 import { WorkflowStore } from "./store.ts";
+import { EXAMPLE_CONFIG_ROOT, makeRepositoryCatalog, makeWorkflow } from "./test-fixtures.ts";
 import type { WorkflowDocument } from "./types.ts";
-
-const EXAMPLE_CONFIG_ROOT = resolve(import.meta.dir, "../../examples/config-root");
 
 describe("compileWorkflowDocument", () => {
 	test("compiles the example workflow into the supported executable subset", async () => {
@@ -66,6 +64,106 @@ describe("compileWorkflowDocument", () => {
 				code: "invalid_executable_workflow",
 				issues: expect.arrayContaining([
 					expect.objectContaining({ code: "unsupported_template" }),
+					]),
+				}),
+			);
+	});
+
+	test("rejects fan-out and merge shapes with machine-readable issue codes", () => {
+		const workflow = makeWorkflow({
+			nodes: [
+				...makeWorkflow().nodes,
+				{
+					id: "remediate",
+					kind: "task",
+					label: "Remediate",
+					phaseId: "implementation",
+					target: { repoId: "agent-console" },
+					settings: {
+						template: "task.agent",
+						prompt: "Triage the failure and prepare a fallback patch.",
+					},
+				},
+			],
+			edges: [
+				...makeWorkflow().edges,
+				{
+					id: "edge-implement-terminal-duplicate-success",
+					sourceId: "implement",
+					targetId: "terminal",
+					condition: "on_success",
+				},
+				{
+					id: "edge-implement-remediate",
+					sourceId: "implement",
+					targetId: "remediate",
+					condition: "on_failure",
+				},
+				{
+					id: "edge-remediate-typecheck",
+					sourceId: "remediate",
+					targetId: "typecheck",
+					condition: "on_success",
+				},
+			],
+		});
+
+		expect(() =>
+			compileWorkflowDocument({
+				document: workflow,
+				repoCatalog: makeRepositoryCatalog(),
+			}),
+		).toThrow(
+			expect.objectContaining({
+				code: "invalid_executable_workflow",
+				issues: expect.arrayContaining([
+					expect.objectContaining({ code: "duplicate_outgoing_condition" }),
+					expect.objectContaining({ code: "multiple_incoming_edges" }),
+				]),
+			}),
+		);
+	});
+
+	test("rejects cycles and unreachable nodes with machine-readable issue codes", () => {
+		const baseWorkflow = makeWorkflow();
+		const workflow = makeWorkflow({
+			nodes: [
+				...baseWorkflow.nodes,
+				{
+					id: "orphan",
+					kind: "task",
+					label: "Orphan",
+					phaseId: "implementation",
+					target: { repoId: "agent-console" },
+					settings: {
+						template: "task.agent",
+						prompt: "This node should never be reachable.",
+					},
+				},
+			],
+			edges: [
+				baseWorkflow.edges[0]!,
+				baseWorkflow.edges[1]!,
+				{
+					id: "edge-typecheck-implement-cycle",
+					sourceId: "typecheck",
+					targetId: "implement",
+					condition: "on_success",
+				},
+			],
+		});
+
+		expect(() =>
+			compileWorkflowDocument({
+				document: workflow,
+				repoCatalog: makeRepositoryCatalog(),
+			}),
+		).toThrow(
+			expect.objectContaining({
+				code: "invalid_executable_workflow",
+				issues: expect.arrayContaining([
+					expect.objectContaining({ code: "cycle_detected" }),
+					expect.objectContaining({ code: "unreachable_node" }),
 				]),
 			}),
 		);

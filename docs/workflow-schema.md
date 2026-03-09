@@ -82,6 +82,7 @@ This slice enforces:
 - duplicate id rejection for repositories, phases, nodes, edges, and workflow ids across files
 - missing phase and node reference rejection
 - repo-target requirements for `task`, `check`, and `artifact` nodes
+- repo targets are rejected on `trigger`, `gate`, and `terminal` nodes
 - repo references must exist in the config-root catalog and be declared in the workflow
 
 ## Compiler Boundary
@@ -96,4 +97,13 @@ currently accepts only these template values in `node.settings.template`:
 - `artifact.capture`
 - `terminal.complete`
 
-Any other template is rejected by the executable compiler boundary with a machine-readable error.
+The compiler also enforces the v1 executable graph subset:
+
+- exactly one `trigger` node and one `terminal` node
+- no cycles
+- no merge nodes with multiple incoming edges
+- no fan-out through duplicate outgoing conditions from the same node
+- all nodes must be reachable from the trigger
+- outgoing edge conditions must match the source node kind
+
+Any template or graph shape outside that executable subset is rejected with machine-readable errors.

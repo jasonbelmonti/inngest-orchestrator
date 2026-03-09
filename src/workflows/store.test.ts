@@ -1,22 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { WorkflowError } from "./errors.ts";
 import {
 	hashWorkflowDocument,
 	serializeWorkflowDocument,
 	serializeWorkflowRepositoryCatalog,
 } from "./serialization.ts";
 import { WorkflowStore } from "./store.ts";
-import type {
-	WorkflowDocument,
-	WorkflowRepositoryCatalog,
-	WorkflowSummary,
-} from "./types.ts";
+import { EXAMPLE_CONFIG_ROOT, makeRepositoryCatalog, makeWorkflow } from "./test-fixtures.ts";
+import type { WorkflowDocument, WorkflowRepositoryCatalog, WorkflowSummary } from "./types.ts";
 import { parseWorkflowDocument } from "./validation.ts";
-
-const EXAMPLE_CONFIG_ROOT = resolve(import.meta.dir, "../../examples/config-root");
 const tempConfigRoots: string[] = [];
 
 afterEach(async () => {
@@ -147,6 +141,31 @@ describe("WorkflowStore", () => {
 			issues: expect.arrayContaining([
 				expect.objectContaining({ code: "missing_repo_target" }),
 			]),
+			});
+	});
+
+	test("rejects repo targets on nodes that are not repo-scoped", async () => {
+		const workflow = makeWorkflow();
+		const brokenWorkflow = {
+			...workflow,
+			nodes: workflow.nodes.map((node) =>
+				node.id === "terminal"
+					? { ...node, target: { repoId: "agent-console" } }
+					: node,
+			),
+		};
+		const configRoot = await createTempConfigRoot({
+			workflows: {
+				broken: brokenWorkflow,
+			},
+		});
+
+		const store = await WorkflowStore.open({ configRoot });
+		await expect(store.listWorkflows()).rejects.toMatchObject({
+			code: "invalid_workflow_document",
+			issues: expect.arrayContaining([
+				expect.objectContaining({ code: "unexpected_repo_target" }),
+			]),
 		});
 	});
 
@@ -189,7 +208,7 @@ function expectSummaryShape(summary: WorkflowSummary | undefined) {
 
 async function createTempConfigRoot(input: {
 	repoCatalog?: WorkflowRepositoryCatalog;
-	workflows: Record<string, WorkflowDocument>;
+	workflows: Record<string, unknown>;
 }) {
 	const root = await mkdtemp(join(tmpdir(), "inngest-orchestrator-io-01-"));
 	tempConfigRoots.push(root);
@@ -206,104 +225,16 @@ async function createTempConfigRoot(input: {
 	);
 
 	for (const [fileName, workflow] of Object.entries(input.workflows)) {
-		await Bun.write(
-			join(workflowsDirectory, `${fileName}.json`),
-			serializeWorkflowDocument(workflow),
-		);
+		const fileContents =
+			isWorkflowDocument(workflow)
+				? serializeWorkflowDocument(workflow)
+				: `${JSON.stringify(workflow, null, 2)}\n`;
+		await Bun.write(join(workflowsDirectory, `${fileName}.json`), fileContents);
 	}
 
 	return root;
 }
 
-function makeRepositoryCatalog(): WorkflowRepositoryCatalog {
-	return {
-		schemaVersion: 1,
-		repositories: [
-			{ id: "agent-console", label: "Agent Console" },
-			{ id: "inngest-orchestrator", label: "Inngest Orchestrator" },
-		],
-	};
-}
-
-function makeWorkflow(
-	overrides: Partial<WorkflowDocument> = {},
-): WorkflowDocument {
-	const workflow: WorkflowDocument = {
-		schemaVersion: 1,
-		workflowId: "cross-repo-bugfix",
-		name: "Cross-Repo Bugfix",
-		summary: "Example workflow for IO-01 tests.",
-		repositories: [
-			{ id: "agent-console", required: true },
-			{ id: "inngest-orchestrator", required: true },
-		],
-		phases: [
-			{ id: "intake", label: "Intake", order: 1 },
-			{ id: "implementation", label: "Implementation", order: 2 },
-			{ id: "output", label: "Output", order: 3 },
-		],
-		nodes: [
-			{
-				id: "trigger",
-				kind: "trigger",
-				label: "Manual Trigger",
-				phaseId: "intake",
-				settings: { template: "trigger.manual" },
-			},
-			{
-				id: "implement",
-				kind: "task",
-				label: "Implement",
-				phaseId: "implementation",
-				target: { repoId: "agent-console" },
-				settings: {
-					template: "task.agent",
-					prompt: "Patch the bug and summarize the diff.",
-				},
-			},
-			{
-				id: "typecheck",
-				kind: "check",
-				label: "Typecheck",
-				phaseId: "output",
-				target: { repoId: "agent-console" },
-				settings: {
-					template: "check.shell",
-					command: "bun run typecheck",
-				},
-			},
-			{
-				id: "terminal",
-				kind: "terminal",
-				label: "Done",
-				phaseId: "output",
-				settings: { template: "terminal.complete" },
-			},
-		],
-		edges: [
-			{
-				id: "edge-trigger-implement",
-				sourceId: "trigger",
-				targetId: "implement",
-				condition: "always",
-			},
-			{
-				id: "edge-implement-typecheck",
-				sourceId: "implement",
-				targetId: "typecheck",
-				condition: "on_success",
-			},
-			{
-				id: "edge-typecheck-terminal",
-				sourceId: "typecheck",
-				targetId: "terminal",
-				condition: "on_success",
-			},
-		],
-	};
-
-	return {
-		...workflow,
-		...overrides,
-	};
+function isWorkflowDocument(value: unknown): value is WorkflowDocument {
+	return value !== null && typeof value === "object" && "workflowId" in value;
 }

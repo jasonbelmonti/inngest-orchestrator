@@ -8,9 +8,20 @@ export type WorkflowValidationIssueCode =
 	| "missing_phase"
 	| "missing_node"
 	| "missing_repo_target"
+	| "unexpected_repo_target"
 	| "unknown_repository"
 	| "undeclared_workflow_repository"
-	| "unsupported_template";
+	| "unsupported_template"
+	| "missing_trigger_node"
+	| "multiple_trigger_nodes"
+	| "missing_terminal_node"
+	| "multiple_terminal_nodes"
+	| "invalid_edge_condition_for_node"
+	| "duplicate_outgoing_condition"
+	| "multiple_incoming_edges"
+	| "cycle_detected"
+	| "unreachable_node"
+	| "missing_required_transition";
 
 export type WorkflowErrorCode =
 	| "config_root_unset"
