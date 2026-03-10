@@ -52,6 +52,12 @@ export function reduceStepStarted(
 ): RunProjectionRecord {
 	const existing = assertRunState(state, event.runId);
 	assertRunStatus(existing, ["running"], event.type);
+	if (existing.currentStepId !== null) {
+		throw new RunStoreError({
+			code: "run_store_invalid_transition",
+			message: `Run "${event.runId}" already has active step "${existing.currentStepId}".`,
+		});
+	}
 	return {
 		...existing,
 		currentStepId: event.stepId,

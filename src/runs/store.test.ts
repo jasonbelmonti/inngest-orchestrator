@@ -167,6 +167,71 @@ describe("SQLiteRunStore", () => {
 		store.close();
 	});
 
+	test("scopes approval and artifact ids to a run instead of the whole database", () => {
+		const store = SQLiteRunStore.open();
+
+		for (const runId of ["run-003a", "run-003b"]) {
+			store.createRun({
+				runId,
+				createdAt: "2026-03-10T10:00:00.000Z",
+				launch: makeResolvedLaunchRequest(),
+			});
+			store.appendEvent({
+				runId,
+				event: {
+					type: "run.started",
+					occurredAt: "2026-03-10T10:00:01.000Z",
+				},
+			});
+			store.appendEvent({
+				runId,
+				event: {
+					type: "step.started",
+					occurredAt: "2026-03-10T10:00:02.000Z",
+					stepId: "build",
+				},
+			});
+			store.appendEvent({
+				runId,
+				event: {
+					type: "approval.requested",
+					occurredAt: "2026-03-10T10:00:03.000Z",
+					approvalId: "approval-1",
+					stepId: "build",
+				},
+			});
+			store.appendEvent({
+				runId,
+				event: {
+					type: "approval.resolved",
+					occurredAt: "2026-03-10T10:00:04.000Z",
+					approvalId: "approval-1",
+					decision: "approved",
+				},
+			});
+			store.appendEvent({
+				runId,
+				event: {
+					type: "artifact.created",
+					occurredAt: "2026-03-10T10:00:05.000Z",
+					artifactId: "artifact-1",
+					stepId: "build",
+					kind: "report",
+					relativePath: `${runId}/summary.md`,
+				},
+			});
+		}
+
+		expect(store.readRun("run-003a")?.approvals).toEqual([
+			expect.objectContaining({ approvalId: "approval-1" }),
+		]);
+		expect(store.readRun("run-003b")?.artifacts).toEqual([
+			expect.objectContaining({ artifactId: "artifact-1" }),
+		]);
+
+		store.close();
+	});
+
 	test("persists cancel and failure terminal states", () => {
 		const store = SQLiteRunStore.open();
 
@@ -250,6 +315,53 @@ describe("SQLiteRunStore", () => {
 		).toThrow(
 			expect.objectContaining({
 				code: "run_store_conflict",
+			}),
+		);
+
+		store.appendEvent({
+			runId: "run-006",
+			event: {
+				type: "run.started",
+				occurredAt: "2026-03-10T10:00:03.000Z",
+			},
+		});
+		store.appendEvent({
+			runId: "run-006",
+			event: {
+				type: "step.started",
+				occurredAt: "2026-03-10T10:00:04.000Z",
+				stepId: "step-a",
+			},
+		});
+
+		expect(() =>
+			store.appendEvent({
+				runId: "run-006",
+				event: {
+					type: "step.started",
+					occurredAt: "2026-03-10T10:00:05.000Z",
+					stepId: "step-b",
+				},
+			}),
+		).toThrow(
+			expect.objectContaining({
+				code: "run_store_invalid_transition",
+			}),
+		);
+
+		expect(() =>
+			store.appendEvent({
+				runId: "run-006",
+				event: {
+					type: "approval.requested",
+					occurredAt: "2026-03-10T10:00:06.000Z",
+					approvalId: "approval-2",
+					stepId: "different-step",
+				},
+			}),
+		).toThrow(
+			expect.objectContaining({
+				code: "run_store_invalid_transition",
 			}),
 		);
 

@@ -32,26 +32,28 @@ CREATE TABLE IF NOT EXISTS run_projections (
 );
 
 CREATE TABLE IF NOT EXISTS approval_requests (
-	approval_id TEXT PRIMARY KEY,
 	run_id TEXT NOT NULL,
+	approval_id TEXT NOT NULL,
 	step_id TEXT NOT NULL,
 	status TEXT NOT NULL,
 	requested_at TEXT NOT NULL,
 	responded_at TEXT,
 	decision TEXT,
 	message TEXT,
-	comment TEXT
+	comment TEXT,
+	PRIMARY KEY (run_id, approval_id)
 );
 
 CREATE TABLE IF NOT EXISTS artifacts (
-	artifact_id TEXT PRIMARY KEY,
 	run_id TEXT NOT NULL,
+	artifact_id TEXT NOT NULL,
 	step_id TEXT NOT NULL,
 	kind TEXT NOT NULL,
 	repo_id TEXT,
 	relative_path TEXT NOT NULL,
 	created_at TEXT NOT NULL,
-	metadata_json TEXT
+	metadata_json TEXT,
+	PRIMARY KEY (run_id, artifact_id)
 );
 
 CREATE TABLE IF NOT EXISTS run_event_cursors (

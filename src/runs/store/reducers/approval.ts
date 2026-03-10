@@ -12,6 +12,12 @@ export function reduceApprovalRequested(
 ): RunProjectionRecord {
 	const existing = assertRunState(state, event.runId);
 	assertRunStatus(existing, ["running"], event.type);
+	if (existing.currentStepId !== event.stepId) {
+		throw new RunStoreError({
+			code: "run_store_invalid_transition",
+			message: `Approval "${event.approvalId}" must target the active step for run "${event.runId}".`,
+		});
+	}
 	if (existing.approvals.some((approval) => approval.status === "pending")) {
 		throw new RunStoreError({
 			code: "run_store_invalid_transition",
