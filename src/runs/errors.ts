@@ -2,6 +2,8 @@ export type RunLaunchIssueCode =
 	| "invalid_shape"
 	| "config_root_invalid"
 	| "workflow_not_found"
+	| "workflow_invalid"
+	| "workflow_not_executable"
 	| "missing_required_repo_binding"
 	| "unknown_repo_binding"
 	| "invalid_repo_binding_path"
@@ -17,6 +19,7 @@ export interface RunLaunchIssue {
 	code: RunLaunchIssueCode;
 	path: string;
 	message: string;
+	filePath?: string;
 }
 
 interface RunLaunchErrorInput {
@@ -45,6 +48,7 @@ export function createRunLaunchIssue(
 	code: RunLaunchIssueCode,
 	path: string,
 	message: string,
+	filePath?: string,
 ): RunLaunchIssue {
-	return { code, path, message };
+	return filePath ? { code, path, message, filePath } : { code, path, message };
 }

@@ -22,6 +22,9 @@ Rules:
 
 - `workflowId` must be a non-empty string.
 - `configRoot` must be a non-empty string.
+- the requested workflow must resolve to exactly one valid workflow document in the config root
+- the requested workflow must compile into the supported executable subset before repo binding
+  resolution begins
 - `repoBindings` must be an object whose keys are workflow repo ids and whose values are absolute
   local directory paths.
 - required workflow repo ids must be present in `repoBindings`
@@ -64,6 +67,11 @@ Determinism guarantees:
 - `repoBindings` are normalized in workflow declaration order, not caller object-key order
 - equivalent input payloads produce equivalent normalized resolved payloads
 - resolution errors use stable machine-readable codes before any persistence begins
+- unrelated invalid workflow files do not block launching a different valid workflow
+
+Issue shape notes:
+
+- issues may include `filePath` when validation fails against a workflow or config-root file on disk
 
 Current machine-readable error codes:
 
@@ -75,6 +83,8 @@ Current issue codes:
 - `invalid_shape`
 - `config_root_invalid`
 - `workflow_not_found`
+- `workflow_invalid`
+- `workflow_not_executable`
 - `missing_required_repo_binding`
 - `unknown_repo_binding`
 - `invalid_repo_binding_path`

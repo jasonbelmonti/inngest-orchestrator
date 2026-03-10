@@ -269,6 +269,138 @@ describe("resolveRunLaunchRequest", () => {
 		});
 	});
 
+	test("ignores unrelated invalid workflow files when launching a valid workflow", async () => {
+		const configRoot = await createTempConfigRoot();
+		await Bun.write(join(configRoot, "workflows", "broken.json"), "{ invalid json\n");
+		const agentConsolePath = await createTempDirectory("agent-console");
+		const orchestratorPath = await createTempDirectory("inngest-runtime");
+
+		const result = await resolveRunLaunchRequest({
+			workflowId: "cross-repo-bugfix",
+			configRoot,
+			repoBindings: {
+				"agent-console": agentConsolePath,
+				"inngest-orchestrator": orchestratorPath,
+			},
+		});
+
+		expect(result.workflow.workflowId).toBe("cross-repo-bugfix");
+		expect(result.repoBindings).toEqual([
+			{
+				repoId: "agent-console",
+				label: "Agent Console",
+				required: true,
+				status: "resolved",
+				resolvedPath: agentConsolePath,
+			},
+			{
+				repoId: "inngest-orchestrator",
+				label: "Inngest Orchestrator",
+				required: true,
+				status: "resolved",
+				resolvedPath: orchestratorPath,
+			},
+		]);
+	});
+
+	test("ignores duplicate workflow ids that do not match the requested workflow", async () => {
+		const configRoot = await createTempConfigRoot({
+			workflows: {
+				"cross-repo-bugfix": makeWorkflow(),
+				"duplicate-a": makeWorkflow({
+					workflowId: "duplicate-workflow",
+					name: "Duplicate Workflow A",
+				}),
+				"duplicate-b": makeWorkflow({
+					workflowId: "duplicate-workflow",
+					name: "Duplicate Workflow B",
+				}),
+			},
+		});
+		const agentConsolePath = await createTempDirectory("agent-console");
+		const orchestratorPath = await createTempDirectory("inngest-runtime");
+
+		const result = await resolveRunLaunchRequest({
+			workflowId: "cross-repo-bugfix",
+			configRoot,
+			repoBindings: {
+				"agent-console": agentConsolePath,
+				"inngest-orchestrator": orchestratorPath,
+			},
+		});
+
+		expect(result.workflow.workflowId).toBe("cross-repo-bugfix");
+	});
+
+	test("surfaces invalid target workflow files with file-path details", async () => {
+		const configRoot = await createTempConfigRoot({
+			workflows: {},
+		});
+		const targetFilePath = join(configRoot, "workflows", "cross-repo-bugfix.json");
+		await Bun.write(targetFilePath, "{ invalid json\n");
+
+		await expect(
+			resolveRunLaunchRequest({
+				workflowId: "cross-repo-bugfix",
+				configRoot,
+				repoBindings: {},
+			}),
+		).rejects.toMatchObject({
+			code: "invalid_run_launch_input",
+			issues: [
+				expect.objectContaining({
+					code: "workflow_invalid",
+					path: "$",
+					filePath: targetFilePath,
+				}),
+			],
+		});
+	});
+
+	test("rejects workflows that fail executable validation before repo resolution", async () => {
+		const baseWorkflow = makeWorkflow();
+		const configRoot = await createTempConfigRoot({
+			workflows: {
+				"cross-repo-bugfix": {
+					...baseWorkflow,
+					nodes: baseWorkflow.nodes.map((node) =>
+						node.id === "implement"
+							? {
+									...node,
+									settings: {
+										...node.settings,
+										template: "task.unstable",
+									},
+							  }
+							: node,
+					),
+				},
+			},
+		});
+		const agentConsolePath = await createTempDirectory("agent-console");
+		const orchestratorPath = await createTempDirectory("inngest-runtime");
+
+		await expect(
+			resolveRunLaunchRequest({
+				workflowId: "cross-repo-bugfix",
+				configRoot,
+				repoBindings: {
+					"agent-console": agentConsolePath,
+					"inngest-orchestrator": orchestratorPath,
+				},
+			}),
+		).rejects.toMatchObject({
+			code: "invalid_run_launch_input",
+			issues: [
+				expect.objectContaining({
+					code: "workflow_not_executable",
+					path: "$.nodes[1].settings.template",
+					filePath: expect.stringContaining("/workflows/cross-repo-bugfix.json"),
+				}),
+			],
+		});
+	});
+
 	test("rejects non-absolute repo binding paths", async () => {
 		const configRoot = await createTempConfigRoot();
 		const orchestratorPath = await createTempDirectory("inngest-runtime");

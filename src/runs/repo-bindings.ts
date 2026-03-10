@@ -1,8 +1,11 @@
+import { basename } from "node:path";
+import { compileWorkflowDocument } from "../workflows/compiler.ts";
 import { WorkflowStore } from "../workflows/store.ts";
-import { WorkflowError } from "../workflows/errors.ts";
+import { WorkflowError, createIssue } from "../workflows/errors.ts";
 import { parseRunLaunchRequest } from "./launch-input.ts";
 import { RunLaunchError, createRunLaunchIssue } from "./errors.ts";
 import { resolveRepositoryBindings } from "./repository-resolution.ts";
+import type { WorkflowRecord } from "../workflows/types.ts";
 import type { ResolvedRunLaunchRequest } from "./types.ts";
 
 export async function resolveRunLaunchRequest(
@@ -35,11 +38,74 @@ async function loadWorkflowLaunchContext(input: {
 }) {
 	try {
 		const store = await WorkflowStore.open({ configRoot: input.configRoot });
-		const workflow = await store.readWorkflow(input.workflowId);
+		const workflow = await readWorkflowForLaunch(store, input.workflowId);
+		assertWorkflowIsExecutable(workflow);
 		return { store, workflow };
 	} catch (error) {
 		throw toRunLaunchError(error, input);
 	}
+}
+
+async function readWorkflowForLaunch(
+	store: WorkflowStore,
+	workflowId: string,
+): Promise<WorkflowRecord> {
+	const workflowFilePaths = await store.listWorkflowFilePaths();
+	const matchingRecords: WorkflowRecord[] = [];
+	const candidateErrors: WorkflowError[] = [];
+
+	for (const filePath of workflowFilePaths) {
+		try {
+			const record = await store.readWorkflowRecordFromFilePath(filePath);
+			if (record.workflowId === workflowId) {
+				matchingRecords.push(record);
+			}
+		} catch (error) {
+			if (!(error instanceof WorkflowError)) {
+				throw error;
+			}
+			if (basename(filePath, ".json") === workflowId) {
+				candidateErrors.push(error);
+			}
+		}
+	}
+
+	if (matchingRecords.length === 0) {
+		const candidateError = candidateErrors[0];
+		if (candidateError) {
+			throw candidateError;
+		}
+		throw new WorkflowError({
+			code: "workflow_not_found",
+			message: `Workflow "${workflowId}" was not found.`,
+		});
+	}
+
+	if (matchingRecords.length > 1) {
+		const firstRecord = matchingRecords[0]!;
+		throw new WorkflowError({
+			code: "invalid_workflow_document",
+			message: `Workflow "${workflowId}" is declared in multiple files.`,
+			filePath: firstRecord.filePath,
+			issues: matchingRecords.slice(1).map((record) =>
+				createIssue(
+					"duplicate_workflow_id",
+					record.filePath,
+					`Workflow id "${workflowId}" is already declared in "${firstRecord.filePath}".`,
+				),
+			),
+		});
+	}
+
+	return matchingRecords[0]!;
+}
+
+function assertWorkflowIsExecutable(workflow: WorkflowRecord) {
+	compileWorkflowDocument({
+		document: workflow.document,
+		repoCatalog: workflow.repoCatalog,
+		filePath: workflow.filePath,
+	});
 }
 
 function toRunLaunchError(
@@ -65,6 +131,24 @@ function toRunLaunchError(
 		});
 	}
 
+	if (error.code === "invalid_json" || error.code === "invalid_workflow_document") {
+		return new RunLaunchError({
+			code: "invalid_run_launch_input",
+			message: `Workflow "${input.workflowId}" is invalid.`,
+			issues: createWorkflowIssues(error, "workflow_invalid"),
+			cause: error,
+		});
+	}
+
+	if (error.code === "invalid_executable_workflow") {
+		return new RunLaunchError({
+			code: "invalid_run_launch_input",
+			message: `Workflow "${input.workflowId}" cannot be executed.`,
+			issues: createWorkflowIssues(error, "workflow_not_executable"),
+			cause: error,
+		});
+	}
+
 	return new RunLaunchError({
 		code: "invalid_run_launch_input",
 		message: "Failed to load the workflow config root.",
@@ -73,8 +157,24 @@ function toRunLaunchError(
 				"config_root_invalid",
 				"$.configRoot",
 				error.message,
+				error.filePath,
 			),
 		],
 		cause: error,
 	});
+}
+
+function createWorkflowIssues(
+	error: WorkflowError,
+	code: "workflow_invalid" | "workflow_not_executable",
+) {
+	if (error.issues && error.issues.length > 0) {
+		return error.issues.map((issue) =>
+			createRunLaunchIssue(code, issue.path, issue.message, error.filePath),
+		);
+	}
+
+	return [
+		createRunLaunchIssue(code, "$", error.message, error.filePath),
+	];
 }
