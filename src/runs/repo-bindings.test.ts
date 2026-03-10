@@ -362,6 +362,37 @@ describe("resolveRunLaunchRequest", () => {
 		expect(result.workflow.workflowId).toBe("cross-repo-bugfix");
 	});
 
+	test("reports targeted duplicate workflow ids with stable workflowId issue paths", async () => {
+		const configRoot = await createTempConfigRoot({
+			workflows: {
+				"a": makeWorkflow({
+					workflowId: "ship-feature",
+					name: "Ship Feature A",
+				}),
+				"b": makeWorkflow({
+					workflowId: "ship-feature",
+					name: "Ship Feature B",
+				}),
+			},
+		});
+
+		await expect(
+			resolveRunLaunchRequest({
+				workflowId: "ship-feature",
+				configRoot,
+				repoBindings: {},
+			}),
+		).rejects.toMatchObject({
+			code: "invalid_run_launch_input",
+			issues: expect.arrayContaining([
+				expect.objectContaining({
+					code: "workflow_invalid",
+					path: "$.workflowId",
+				}),
+			]),
+		});
+	});
+
 	test("surfaces invalid target workflow files with file-path details", async () => {
 		const configRoot = await createTempConfigRoot({
 			workflows: {},
@@ -438,6 +469,37 @@ describe("resolveRunLaunchRequest", () => {
 				expect.objectContaining({
 					code: "workflow_invalid",
 					filePath: expect.stringContaining("/workflows/custom.json"),
+				}),
+			]),
+		});
+	});
+
+	test("reports duplicate malformed workflow files as an ambiguous target workflow", async () => {
+		const configRoot = await createTempConfigRoot({
+			workflows: {
+				a: {
+					schemaVersion: 1,
+					workflowId: "ship-feature",
+				},
+				b: {
+					schemaVersion: 1,
+					workflowId: "ship-feature",
+				},
+			},
+		});
+
+		await expect(
+			resolveRunLaunchRequest({
+				workflowId: "ship-feature",
+				configRoot,
+				repoBindings: {},
+			}),
+		).rejects.toMatchObject({
+			code: "invalid_run_launch_input",
+			issues: expect.arrayContaining([
+				expect.objectContaining({
+					code: "workflow_invalid",
+					path: "$.workflowId",
 				}),
 			]),
 		});

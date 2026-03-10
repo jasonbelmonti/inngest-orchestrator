@@ -79,6 +79,14 @@ async function readWorkflowForLaunch(
 	}
 
 	if (matchingRecords.length === 0) {
+		if (matchingErrors.length > 1) {
+			throw createDuplicateWorkflowError(
+				workflowId,
+				matchingErrors.flatMap((error) =>
+					error.filePath ? [error.filePath] : [],
+				),
+			);
+		}
 		const matchingError = matchingErrors[0];
 		if (matchingError) {
 			throw matchingError;
@@ -90,19 +98,10 @@ async function readWorkflowForLaunch(
 	}
 
 	if (matchingRecords.length > 1) {
-		const firstRecord = matchingRecords[0]!;
-		throw new WorkflowError({
-			code: "invalid_workflow_document",
-			message: `Workflow "${workflowId}" is declared in multiple files.`,
-			filePath: firstRecord.filePath,
-			issues: matchingRecords.slice(1).map((record) =>
-				createIssue(
-					"duplicate_workflow_id",
-					record.filePath,
-					`Workflow id "${workflowId}" is already declared in "${firstRecord.filePath}".`,
-				),
-			),
-		});
+		throw createDuplicateWorkflowError(
+			workflowId,
+			matchingRecords.map((record) => record.filePath),
+		);
 	}
 
 	return matchingRecords[0]!;
@@ -200,6 +199,22 @@ function isWorkflowFileError(error: WorkflowError) {
 		return false;
 	}
 	return error.filePath.includes(`${sep}workflows${sep}`);
+}
+
+function createDuplicateWorkflowError(workflowId: string, filePaths: string[]) {
+	const [firstFilePath, ...duplicateFilePaths] = filePaths;
+	return new WorkflowError({
+		code: "invalid_workflow_document",
+		message: `Workflow "${workflowId}" is declared in multiple files.`,
+		...(firstFilePath ? { filePath: firstFilePath } : {}),
+		issues: duplicateFilePaths.map((filePath) =>
+			createIssue(
+				"duplicate_workflow_id",
+				"$.workflowId",
+				`Workflow id "${workflowId}" is already declared in "${firstFilePath}". Duplicate file: "${filePath}".`,
+			),
+		),
+	});
 }
 
 function createWorkflowIssues(
