@@ -1,11 +1,11 @@
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import { compileWorkflowDocument } from "../workflows/compiler.ts";
-import { WorkflowStore } from "../workflows/store.ts";
 import { WorkflowError, createIssue } from "../workflows/errors.ts";
-import { parseRunLaunchRequest } from "./launch-input.ts";
-import { RunLaunchError, createRunLaunchIssue } from "./errors.ts";
-import { resolveRepositoryBindings } from "./repository-resolution.ts";
+import { WorkflowStore } from "../workflows/store.ts";
 import type { WorkflowRecord } from "../workflows/types.ts";
+import { RunLaunchError, createRunLaunchIssue } from "./errors.ts";
+import { parseRunLaunchRequest } from "./launch-input.ts";
+import { resolveRepositoryBindings } from "./repository-resolution.ts";
 import type { ResolvedRunLaunchRequest } from "./types.ts";
 
 export async function resolveRunLaunchRequest(
@@ -38,6 +38,7 @@ async function loadWorkflowLaunchContext(input: {
 }) {
 	try {
 		const store = await WorkflowStore.open({ configRoot: input.configRoot });
+		await store.readRepositoryCatalog();
 		const workflow = await readWorkflowForLaunch(store, input.workflowId);
 		assertWorkflowIsExecutable(workflow);
 		return { store, workflow };
@@ -52,7 +53,6 @@ async function readWorkflowForLaunch(
 ): Promise<WorkflowRecord> {
 	const workflowFilePaths = await store.listWorkflowFilePaths();
 	const matchingRecords: WorkflowRecord[] = [];
-	const candidateErrors: WorkflowError[] = [];
 
 	for (const filePath of workflowFilePaths) {
 		try {
@@ -64,17 +64,13 @@ async function readWorkflowForLaunch(
 			if (!(error instanceof WorkflowError)) {
 				throw error;
 			}
-			if (basename(filePath, ".json") === workflowId) {
-				candidateErrors.push(error);
+			if (await matchesRequestedWorkflow(filePath, workflowId)) {
+				throw error;
 			}
 		}
 	}
 
 	if (matchingRecords.length === 0) {
-		const candidateError = candidateErrors[0];
-		if (candidateError) {
-			throw candidateError;
-		}
 		throw new WorkflowError({
 			code: "workflow_not_found",
 			message: `Workflow "${workflowId}" was not found.`,
@@ -98,6 +94,25 @@ async function readWorkflowForLaunch(
 	}
 
 	return matchingRecords[0]!;
+}
+
+async function matchesRequestedWorkflow(filePath: string, workflowId: string) {
+	try {
+		const source = await Bun.file(filePath).text();
+		const parsed = JSON.parse(source) as unknown;
+		if (
+			parsed !== null &&
+			typeof parsed === "object" &&
+			"workflowId" in parsed &&
+			typeof parsed.workflowId === "string"
+		) {
+			return parsed.workflowId === workflowId;
+		}
+	} catch {
+		return basename(filePath, ".json") === workflowId;
+	}
+
+	return basename(filePath, ".json") === workflowId;
 }
 
 function assertWorkflowIsExecutable(workflow: WorkflowRecord) {
@@ -131,7 +146,11 @@ function toRunLaunchError(
 		});
 	}
 
-	if (error.code === "invalid_json" || error.code === "invalid_workflow_document") {
+	if (
+		error.code === "invalid_workflow_document" ||
+		(error.code === "invalid_json" &&
+			isWorkflowFileError(error, input.configRoot))
+	) {
 		return new RunLaunchError({
 			code: "invalid_run_launch_input",
 			message: `Workflow "${input.workflowId}" is invalid.`,
@@ -164,6 +183,13 @@ function toRunLaunchError(
 	});
 }
 
+function isWorkflowFileError(error: WorkflowError, configRoot: string) {
+	if (!error.filePath) {
+		return false;
+	}
+	return error.filePath.startsWith(join(configRoot, "workflows"));
+}
+
 function createWorkflowIssues(
 	error: WorkflowError,
 	code: "workflow_invalid" | "workflow_not_executable",
@@ -174,7 +200,5 @@ function createWorkflowIssues(
 		);
 	}
 
-	return [
-		createRunLaunchIssue(code, "$", error.message, error.filePath),
-	];
+	return [createRunLaunchIssue(code, "$", error.message, error.filePath)];
 }

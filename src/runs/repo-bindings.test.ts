@@ -268,6 +268,36 @@ describe("resolveRunLaunchRequest", () => {
 			],
 		});
 	});
+	test("reports broken repository catalog as config-root invalid even when workflow files exist", async () => {
+		const configRoot = await createTempConfigRoot({
+			workflows: {
+				"unrelated-workflow": makeWorkflow({
+					workflowId: "unrelated-workflow",
+					name: "Unrelated Workflow",
+				}),
+			},
+		});
+		await Bun.write(
+			join(configRoot, "repos", "workspace.repos.json"),
+			"{ invalid json\n",
+		);
+
+		await expect(
+			resolveRunLaunchRequest({
+				workflowId: "cross-repo-bugfix",
+				configRoot,
+				repoBindings: {},
+			}),
+		).rejects.toMatchObject({
+			code: "invalid_run_launch_input",
+			issues: [
+				expect.objectContaining({
+					code: "config_root_invalid",
+					path: "$.configRoot",
+				}),
+			],
+		});
+	});
 
 	test("ignores unrelated invalid workflow files when launching a valid workflow", async () => {
 		const configRoot = await createTempConfigRoot();
@@ -357,6 +387,33 @@ describe("resolveRunLaunchRequest", () => {
 		});
 	});
 
+	test("reports targeted invalid workflow files by declared workflow id", async () => {
+		const configRoot = await createTempConfigRoot({
+			workflows: {
+				custom: {
+					schemaVersion: 1,
+					workflowId: "ship-feature",
+				},
+			},
+		});
+
+		await expect(
+			resolveRunLaunchRequest({
+				workflowId: "ship-feature",
+				configRoot,
+				repoBindings: {},
+			}),
+		).rejects.toMatchObject({
+			code: "invalid_run_launch_input",
+			issues: expect.arrayContaining([
+				expect.objectContaining({
+					code: "workflow_invalid",
+					filePath: expect.stringContaining("/workflows/custom.json"),
+				}),
+			]),
+		});
+	});
+
 	test("rejects workflows that fail executable validation before repo resolution", async () => {
 		const baseWorkflow = makeWorkflow();
 		const configRoot = await createTempConfigRoot({
@@ -399,6 +456,31 @@ describe("resolveRunLaunchRequest", () => {
 				}),
 			],
 		});
+	});
+
+	test("ignores unrelated invalid workflow documents when the requested workflow is valid", async () => {
+		const configRoot = await createTempConfigRoot({
+			workflows: {
+				"cross-repo-bugfix": makeWorkflow(),
+				broken: {
+					schemaVersion: 1,
+					workflowId: "broken-workflow",
+				},
+			},
+		});
+		const agentConsolePath = await createTempDirectory("agent-console");
+		const orchestratorPath = await createTempDirectory("inngest-runtime");
+
+		const result = await resolveRunLaunchRequest({
+			workflowId: "cross-repo-bugfix",
+			configRoot,
+			repoBindings: {
+				"agent-console": agentConsolePath,
+				"inngest-orchestrator": orchestratorPath,
+			},
+		});
+
+		expect(result.workflow.workflowId).toBe("cross-repo-bugfix");
 	});
 
 	test("rejects non-absolute repo binding paths", async () => {
@@ -552,7 +634,10 @@ async function createTempConfigRoot(input?: {
 
 	for (const [fileName, workflow] of Object.entries(input?.workflows ?? {})) {
 		await Bun.write(
-			join(workflowsDirectory, `${fileName}.json`),
+			join(
+				workflowsDirectory,
+				fileName.endsWith(".json") ? fileName : `${fileName}.json`,
+			),
 			`${JSON.stringify(workflow, null, 2)}\n`,
 		);
 	}
