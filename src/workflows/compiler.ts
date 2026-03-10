@@ -14,6 +14,7 @@ import type {
 export function compileWorkflowDocument(input: {
 	document: WorkflowDocument;
 	repoCatalog: WorkflowRepositoryCatalog;
+	filePath?: string;
 }): CompiledWorkflowDocument {
 	const repositoryCatalogById = new Map(
 		input.repoCatalog.repositories.map((repository) => [repository.id, repository]),
@@ -40,6 +41,7 @@ export function compileWorkflowDocument(input: {
 		throw new WorkflowError({
 			code: "invalid_executable_workflow",
 			message: "Workflow cannot be compiled into the supported v1 executable subset.",
+			filePath: input.filePath,
 			issues,
 		});
 	}

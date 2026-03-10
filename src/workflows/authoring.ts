@@ -49,6 +49,7 @@ export async function validateWorkflowDocumentInput(input: {
 	const compiled = compileWorkflowDocument({
 		document,
 		repoCatalog,
+		filePath,
 	});
 
 	return {
