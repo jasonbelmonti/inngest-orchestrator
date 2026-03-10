@@ -1,4 +1,4 @@
-import { basename, join } from "node:path";
+import { basename, sep } from "node:path";
 import { compileWorkflowDocument } from "../workflows/compiler.ts";
 import { WorkflowError, createIssue } from "../workflows/errors.ts";
 import { WorkflowStore } from "../workflows/store.ts";
@@ -43,7 +43,10 @@ async function loadWorkflowLaunchContext(input: {
 		assertWorkflowIsExecutable(workflow);
 		return { store, workflow };
 	} catch (error) {
-		throw toRunLaunchError(error, input);
+		throw toRunLaunchError(error, {
+			configRoot: input.configRoot,
+			workflowId: input.workflowId,
+		});
 	}
 }
 
@@ -53,6 +56,7 @@ async function readWorkflowForLaunch(
 ): Promise<WorkflowRecord> {
 	const workflowFilePaths = await store.listWorkflowFilePaths();
 	const matchingRecords: WorkflowRecord[] = [];
+	const matchingErrors: WorkflowError[] = [];
 
 	for (const filePath of workflowFilePaths) {
 		try {
@@ -65,12 +69,20 @@ async function readWorkflowForLaunch(
 				throw error;
 			}
 			if (await matchesRequestedWorkflow(filePath, workflowId)) {
-				throw error;
+				matchingErrors.push(error);
 			}
 		}
 	}
 
+	if (matchingRecords.length === 1) {
+		return matchingRecords[0]!;
+	}
+
 	if (matchingRecords.length === 0) {
+		const matchingError = matchingErrors[0];
+		if (matchingError) {
+			throw matchingError;
+		}
 		throw new WorkflowError({
 			code: "workflow_not_found",
 			message: `Workflow "${workflowId}" was not found.`,
@@ -149,7 +161,7 @@ function toRunLaunchError(
 	if (
 		error.code === "invalid_workflow_document" ||
 		(error.code === "invalid_json" &&
-			isWorkflowFileError(error, input.configRoot))
+			isWorkflowFileError(error))
 	) {
 		return new RunLaunchError({
 			code: "invalid_run_launch_input",
@@ -183,11 +195,11 @@ function toRunLaunchError(
 	});
 }
 
-function isWorkflowFileError(error: WorkflowError, configRoot: string) {
+function isWorkflowFileError(error: WorkflowError) {
 	if (!error.filePath) {
 		return false;
 	}
-	return error.filePath.startsWith(join(configRoot, "workflows"));
+	return error.filePath.includes(`${sep}workflows${sep}`);
 }
 
 function createWorkflowIssues(

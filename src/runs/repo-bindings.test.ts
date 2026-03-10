@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { serializeWorkflowRepositoryCatalog } from "../workflows/serialization.ts";
 import { makeRepositoryCatalog, makeWorkflow } from "../workflows/test-fixtures.ts";
@@ -387,6 +387,35 @@ describe("resolveRunLaunchRequest", () => {
 		});
 	});
 
+	test("classifies malformed target workflows correctly when configRoot is relative", async () => {
+		const absoluteConfigRoot = await createTempConfigRoot({
+			workflows: {},
+		});
+		const targetFilePath = join(
+			absoluteConfigRoot,
+			"workflows",
+			"cross-repo-bugfix.json",
+		);
+		await Bun.write(targetFilePath, "{ invalid json\n");
+		const configRoot = relative(process.cwd(), absoluteConfigRoot);
+
+		await expect(
+			resolveRunLaunchRequest({
+				workflowId: "cross-repo-bugfix",
+				configRoot,
+				repoBindings: {},
+			}),
+		).rejects.toMatchObject({
+			code: "invalid_run_launch_input",
+			issues: [
+				expect.objectContaining({
+					code: "workflow_invalid",
+					filePath: targetFilePath,
+				}),
+			],
+		});
+	});
+
 	test("reports targeted invalid workflow files by declared workflow id", async () => {
 		const configRoot = await createTempConfigRoot({
 			workflows: {
@@ -412,6 +441,35 @@ describe("resolveRunLaunchRequest", () => {
 				}),
 			]),
 		});
+	});
+
+	test("prefers a valid workflow over malformed decoy files with the same workflow id", async () => {
+		const configRoot = await createTempConfigRoot({
+			workflows: {
+				custom: {
+					schemaVersion: 1,
+					workflowId: "ship-feature",
+				},
+				"ship-feature": makeWorkflow({
+					workflowId: "ship-feature",
+					name: "Ship Feature",
+				}),
+			},
+		});
+		const agentConsolePath = await createTempDirectory("agent-console");
+		const orchestratorPath = await createTempDirectory("inngest-runtime");
+
+		const result = await resolveRunLaunchRequest({
+			workflowId: "ship-feature",
+			configRoot,
+			repoBindings: {
+				"agent-console": agentConsolePath,
+				"inngest-orchestrator": orchestratorPath,
+			},
+		});
+
+		expect(result.workflow.workflowId).toBe("ship-feature");
+		expect(result.workflow.filePath).toContain("/workflows/ship-feature.json");
 	});
 
 	test("rejects workflows that fail executable validation before repo resolution", async () => {
