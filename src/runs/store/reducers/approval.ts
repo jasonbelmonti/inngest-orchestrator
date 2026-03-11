@@ -24,7 +24,11 @@ export function reduceApprovalRequested(
 			message: `Run "${event.runId}" already has a pending approval.`,
 		});
 	}
-	if (existing.approvals.some((approval) => approval.approvalId === event.approvalId)) {
+	if (
+		existing.approvals.some(
+			(approval) => approval.approvalId === event.approvalId,
+		)
+	) {
 		throw new RunStoreError({
 			code: "run_store_conflict",
 			message: `Approval "${event.approvalId}" already exists for run "${event.runId}".`,
@@ -84,7 +88,7 @@ export function reduceApprovalResolved(
 						decision: event.decision,
 						respondedAt: event.occurredAt,
 						...(event.comment !== undefined ? { comment: event.comment } : {}),
-				  }
+					}
 				: candidate,
 		),
 	};

@@ -20,7 +20,9 @@ import {
 } from "./reducers/approval.ts";
 import { reduceArtifactCreated } from "./reducers/artifact.ts";
 
-export function createRunCreatedEvent(input: CreateRunRecordInput): StoredRunEvent {
+export function createRunCreatedEvent(
+	input: CreateRunRecordInput,
+): StoredRunEvent {
 	return {
 		runId: input.runId,
 		sequence: 1,

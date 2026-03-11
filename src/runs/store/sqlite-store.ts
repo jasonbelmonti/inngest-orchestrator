@@ -101,7 +101,11 @@ export class SQLiteRunStore {
 		return readRunEventCursor(this.database, runId);
 	}
 
-	saveCursor(input: { runId: string; lastEventSequence: number; updatedAt: string }) {
+	saveCursor(input: {
+		runId: string;
+		lastEventSequence: number;
+		updatedAt: string;
+	}) {
 		writeRunEventCursor(this.database, input);
 	}
 
