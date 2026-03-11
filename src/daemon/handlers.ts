@@ -2,6 +2,7 @@ import { resolveRunLaunchRequest } from "../runs/repo-bindings.ts";
 import type { SQLiteRunStore } from "../runs/store/sqlite-store.ts";
 import { DaemonHttpError } from "./errors.ts";
 import { toRunControlEvent } from "./control-events.ts";
+import { resolveRunEventReplay } from "./event-replay.ts";
 import { parseRunControlRequest, readJsonBody } from "./parsing.ts";
 import { successResponse } from "./responses.ts";
 import { summarizeRun } from "./run-mappers.ts";
@@ -75,7 +76,20 @@ export function handleRunEvents(
 		});
 	}
 
-	return eventStreamBroker.openStream(runId, request.signal);
+	const replay = resolveRunEventReplay(request, store, run);
+	const afterSequence = replay.afterSequence;
+	return eventStreamBroker.openStream({
+		runId,
+		signal: request.signal,
+		resolveInitialEvents:
+			afterSequence === null
+				? undefined
+				: () =>
+						store.listEventsAfter({
+							runId,
+							afterSequence,
+						}),
+	});
 }
 
 export async function handleRunControl(

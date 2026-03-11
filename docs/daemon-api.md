@@ -151,7 +151,7 @@ Unknown runs return `404` with `code: "run_store_not_found"`.
 
 ## GET /runs/:id/events
 
-Opens a live per-run Server-Sent Events stream.
+Opens a per-run Server-Sent Events stream with replay support.
 
 Success status: `200`
 
@@ -171,11 +171,13 @@ data: {"runId":"run-001","sequence":3,"type":"run.cancelled","occurredAt":"2026-
 
 Unknown runs return the normal JSON `404` envelope with `code: "run_store_not_found"`.
 
-Scope notes for `BEL-355`:
+Replay semantics:
 
-- this is live fanout only
-- the stream emits events published after the subscription opens
-- replay, resume, and `Last-Event-ID` handling are not included yet
+- clients can reconnect with `Last-Event-ID: <sequence>`
+- the daemon replays persisted events with `sequence > Last-Event-ID` before switching to live delivery
+- `Last-Event-ID` must be a non-negative integer
+- `Last-Event-ID` cannot be greater than the latest persisted event sequence for the run
+- when `Last-Event-ID` equals the latest persisted event sequence, the stream resumes in live-only mode
 
 ## POST /runs/:id/control
 
@@ -240,7 +242,7 @@ Validation notes:
 
 Not included yet:
 
-- no SSE replay or resume semantics on `GET /runs/:id/events`
+- no SSE restart recovery guarantees beyond persisted replay on reconnect
 - no Inngest workflow execution
 - no managed provider sessions
 

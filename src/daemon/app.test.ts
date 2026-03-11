@@ -303,6 +303,146 @@ describe("daemon app", () => {
 		]);
 	});
 
+	test("GET /runs/:id/events replays from Last-Event-ID and continues live", async () => {
+		const harness = await createDaemonTestHarness();
+		await seedActiveStepRun(harness, "run-replay");
+
+		await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-replay/control",
+			{
+				action: "request_approval",
+				approvalId: "approval-replay",
+				stepId: "implement",
+				message: "Ship it?",
+			},
+		);
+		await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-replay/control",
+			{
+				action: "resolve_approval",
+				approvalId: "approval-replay",
+				decision: "approved",
+				comment: "Looks good.",
+			},
+		);
+
+		const streamResponse = await harness.app.fetch(
+			new Request("http://daemon.test/runs/run-replay/events", {
+				method: "GET",
+				headers: {
+					"last-event-id": "3",
+				},
+			}),
+		);
+
+		expect(streamResponse.status).toBe(200);
+		const eventsPromise = readSseEvents(streamResponse, 3);
+
+		const cancelResponse = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-replay/control",
+			{
+				action: "cancel",
+				reason: "operator stopped run",
+			},
+		);
+		expect(cancelResponse.status).toBe(200);
+
+		await expect(eventsPromise).resolves.toEqual([
+			{
+				id: "4",
+				event: "approval.requested",
+				data: {
+					runId: "run-replay",
+					sequence: 4,
+					type: "approval.requested",
+					occurredAt: "2026-03-11T12:00:00.000Z",
+					approvalId: "approval-replay",
+					stepId: "implement",
+					message: "Ship it?",
+				},
+			},
+			{
+				id: "5",
+				event: "approval.resolved",
+				data: {
+					runId: "run-replay",
+					sequence: 5,
+					type: "approval.resolved",
+					occurredAt: "2026-03-11T12:00:00.000Z",
+					approvalId: "approval-replay",
+					decision: "approved",
+					comment: "Looks good.",
+				},
+			},
+			{
+				id: "6",
+				event: "run.cancelled",
+				data: {
+					runId: "run-replay",
+					sequence: 6,
+					type: "run.cancelled",
+					occurredAt: "2026-03-11T12:00:00.000Z",
+					reason: "operator stopped run",
+				},
+			},
+		]);
+	});
+
+	test("GET /runs/:id/events rejects invalid Last-Event-ID headers", async () => {
+		const harness = await createDaemonTestHarness();
+
+		await dispatchDaemonRequest(harness.app, "POST", "/runs", {
+			workflowId: "cross-repo-bugfix",
+			configRoot: harness.configRoot,
+			repoBindings: harness.repoBindings,
+		});
+
+		const invalidHeaderResponse = await harness.app.fetch(
+			new Request("http://daemon.test/runs/run-001/events", {
+				method: "GET",
+				headers: {
+					"last-event-id": "banana",
+				},
+			}),
+		);
+
+		expect(invalidHeaderResponse.status).toBe(400);
+		expect(await expectJson(invalidHeaderResponse)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "invalid_http_input",
+				message: '"Last-Event-ID" must be a non-negative integer.',
+				runId: "run-001",
+			}),
+		});
+
+		const futureHeaderResponse = await harness.app.fetch(
+			new Request("http://daemon.test/runs/run-001/events", {
+				method: "GET",
+				headers: {
+					"last-event-id": "99",
+				},
+			}),
+		);
+
+		expect(futureHeaderResponse.status).toBe(400);
+		expect(await expectJson(futureHeaderResponse)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "invalid_http_input",
+				message:
+					'"Last-Event-ID" cannot be greater than the latest persisted event sequence for this run.',
+				runId: "run-001",
+			}),
+		});
+	});
+
 	test("SSE subscriptions clean up on disconnect", async () => {
 		const harness = await createDaemonTestHarness();
 
