@@ -48,14 +48,14 @@ function parsePort(input: string | undefined) {
 
 	if (!/^\d+$/.test(input)) {
 		throw new Error(
-			`INNGEST_ORCHESTRATOR_PORT must be a positive integer. Received "${input}".`,
+			`INNGEST_ORCHESTRATOR_PORT must be an integer between 1 and 65535. Received "${input}".`,
 		);
 	}
 
 	const value = Number.parseInt(input, 10);
-	if (value <= 0) {
+	if (value <= 0 || value > 65_535) {
 		throw new Error(
-			`INNGEST_ORCHESTRATOR_PORT must be a positive integer. Received "${input}".`,
+			`INNGEST_ORCHESTRATOR_PORT must be an integer between 1 and 65535. Received "${input}".`,
 		);
 	}
 

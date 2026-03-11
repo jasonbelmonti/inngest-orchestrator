@@ -32,7 +32,17 @@ describe("resolveDaemonRuntimeConfig", () => {
 				INNGEST_ORCHESTRATOR_PORT: "3017abc",
 			}),
 		).toThrow(
-			'INNGEST_ORCHESTRATOR_PORT must be a positive integer. Received "3017abc".',
+			'INNGEST_ORCHESTRATOR_PORT must be an integer between 1 and 65535. Received "3017abc".',
+		);
+	});
+
+	test("rejects out-of-range ports", () => {
+		expect(() =>
+			resolveDaemonRuntimeConfig({
+				INNGEST_ORCHESTRATOR_PORT: "70000",
+			}),
+		).toThrow(
+			'INNGEST_ORCHESTRATOR_PORT must be an integer between 1 and 65535. Received "70000".',
 		);
 	});
 });
