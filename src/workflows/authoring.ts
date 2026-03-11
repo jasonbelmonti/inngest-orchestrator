@@ -3,7 +3,7 @@ import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { compileWorkflowDocument } from "./compiler.ts";
 import { WorkflowError, createIssue } from "./errors.ts";
 import { hashWorkflowDocument, serializeWorkflowDocument } from "./serialization.ts";
-import { WorkflowStore } from "./store.ts";
+import type { WorkflowStore } from "./store.ts";
 import type {
 	CompiledWorkflowDocument,
 	WorkflowDocument,

@@ -66,25 +66,40 @@ describe("WorkflowStore", () => {
 		]);
 	});
 
-	test("rejects duplicate node ids with machine-readable issue codes", async () => {
-		const configRoot = await createTempConfigRoot({
-			workflows: {
-				duplicate: makeWorkflow({
-					nodes: [
-						makeWorkflow().nodes[0]!,
-						{
-							...makeWorkflow().nodes[1]!,
-							id: "duplicate",
-						},
-						{
-							...makeWorkflow().nodes[2]!,
-							id: "duplicate",
-						},
-						makeWorkflow().nodes[3]!,
-					],
-				}),
-			},
-		});
+		test("rejects duplicate node ids with machine-readable issue codes", async () => {
+			const configRoot = await createTempConfigRoot({
+				workflows: {
+					duplicate: (() => {
+						const baseWorkflowNodes = makeWorkflow().nodes;
+						if (
+							baseWorkflowNodes.length < 4 ||
+							baseWorkflowNodes[0] === undefined ||
+							baseWorkflowNodes[1] === undefined ||
+							baseWorkflowNodes[2] === undefined ||
+							baseWorkflowNodes[3] === undefined
+						) {
+							throw new Error("Invalid base workflow fixture.");
+						}
+
+						const [triggerNode, implementNode, typecheckNode, terminalNode] =
+							baseWorkflowNodes;
+						return {
+							nodes: [
+								triggerNode,
+								{
+									...implementNode,
+									id: "duplicate",
+								},
+								{
+									...typecheckNode,
+									id: "duplicate",
+								},
+								terminalNode,
+							],
+						};
+					})(),
+				},
+			});
 
 		const store = await WorkflowStore.open({ configRoot });
 		await expect(store.listWorkflows()).rejects.toMatchObject({

@@ -216,12 +216,20 @@ function prepareWorkflowCommand(input: {
 					message: "workflow read requires exactly one workflow id argument.",
 				});
 			}
+			const [workflowId] = input.positional;
+			if (!workflowId) {
+				throw new CliError({
+					code: "invalid_cli_arguments",
+					command: "workflow.read",
+					message: "workflow read requires exactly one workflow id argument.",
+				});
+			}
 			return {
 				subcommand: "read",
 				command: "workflow.read",
 				configRoot: input.configRoot,
 				requiresStdin: false,
-				workflowId: input.positional[0]!,
+				workflowId,
 			};
 		case "validate":
 			assertNoPositionalArgs(input.positional, "workflow.validate");
@@ -247,7 +255,7 @@ function parseWorkflowOptions(args: string[]) {
 	const positional: string[] = [];
 
 	for (let index = 0; index < args.length; index += 1) {
-		const value = args[index]!;
+		const value = args[index];
 		if (value === "--config-root") {
 			const nextValue = args[index + 1];
 			if (!nextValue || nextValue.startsWith("-")) {

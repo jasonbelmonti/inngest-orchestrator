@@ -249,7 +249,12 @@ function appendUnreachableNodeIssues(input: {
 	}
 
 	const visitedNodeIds = new Set<string>();
-	const pendingNodeIds = [triggerNodes[0]!.id];
+	const [triggerNode] = triggerNodes;
+	if (!triggerNode) {
+		return;
+	}
+
+	const pendingNodeIds = [triggerNode.id];
 
 	while (pendingNodeIds.length > 0) {
 		const nodeId = pendingNodeIds.pop();

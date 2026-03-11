@@ -124,8 +124,13 @@ describe("compileWorkflowDocument", () => {
 		);
 	});
 
-	test("rejects cycles and unreachable nodes with machine-readable issue codes", () => {
+		test("rejects cycles and unreachable nodes with machine-readable issue codes", () => {
 		const baseWorkflow = makeWorkflow();
+		const [firstBaseEdge, secondBaseEdge] = baseWorkflow.edges;
+		if (!firstBaseEdge || !secondBaseEdge) {
+			throw new Error("Invalid base workflow fixture.");
+		}
+
 		const workflow = makeWorkflow({
 			nodes: [
 				...baseWorkflow.nodes,
@@ -142,8 +147,8 @@ describe("compileWorkflowDocument", () => {
 				},
 			],
 			edges: [
-				baseWorkflow.edges[0]!,
-				baseWorkflow.edges[1]!,
+					firstBaseEdge,
+					secondBaseEdge,
 				{
 					id: "edge-typecheck-implement-cycle",
 					sourceId: "typecheck",
