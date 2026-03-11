@@ -99,6 +99,43 @@ test("openStream enqueues replay events before live delivery", async () => {
 	await reader?.cancel();
 });
 
+test("aborting during replay resolution unsubscribes the dead stream", async () => {
+	const broker = new RunEventStreamBroker({ keepAliveMs: 60_000 });
+	const abortController = new AbortController();
+
+	const response = broker.openStream({
+		runId: "run-race",
+		signal: abortController.signal,
+		resolveInitialEvents: () => {
+			abortController.abort();
+			return [makeStoredEvent(1, "replay")];
+		},
+	});
+	const reader = response.body?.getReader();
+
+	await expect(reader?.read()).resolves.toEqual({
+		done: true,
+		value: undefined,
+	});
+	expect(broker.subscriberCount("run-race")).toBe(0);
+	expect(getSubscriberBuckets(broker).has("run-race")).toBe(false);
+});
+
+test("replay resolution errors clean up subscribed streams", () => {
+	const broker = new RunEventStreamBroker({ keepAliveMs: 60_000 });
+
+	expect(() =>
+		broker.openStream({
+			runId: "run-throw",
+			resolveInitialEvents: () => {
+				throw new Error("boom");
+			},
+		}),
+	).toThrow("boom");
+	expect(broker.subscriberCount("run-throw")).toBe(0);
+	expect(getSubscriberBuckets(broker).has("run-throw")).toBe(false);
+});
+
 function getSubscriberBuckets(broker: RunEventStreamBroker) {
 	return (
 		broker as unknown as {

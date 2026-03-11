@@ -33,6 +33,7 @@ export class RunEventStreamBroker {
 	}) {
 		let keepAliveTimer: Timer | null = null;
 		let subscriber: StreamSubscriber | null = null;
+		let abortHandler: (() => void) | null = null;
 
 		const stream = new ReadableStream<Uint8Array>(
 			{
@@ -66,31 +67,60 @@ export class RunEventStreamBroker {
 					};
 
 					subscriberSet.add(subscriber);
-					for (const event of input.resolveInitialEvents?.() ?? []) {
-						if (
-							!subscriber.enqueue(this.textEncoder.encode(formatEvent(event)))
-						) {
-							return;
+
+					abortHandler = () => {
+						subscriber?.close();
+						this.unsubscribe(
+							input.runId,
+							subscriber,
+							keepAliveTimer,
+							input.signal,
+							abortHandler,
+						);
+					};
+					input.signal?.addEventListener("abort", abortHandler, { once: true });
+
+					try {
+						for (const event of input.resolveInitialEvents?.() ?? []) {
+							if (subscriber.closed) {
+								return;
+							}
+							if (
+								!subscriber.enqueue(this.textEncoder.encode(formatEvent(event)))
+							) {
+								return;
+							}
 						}
+					} catch (error) {
+						this.unsubscribe(
+							input.runId,
+							subscriber,
+							keepAliveTimer,
+							input.signal,
+							abortHandler,
+						);
+						throw error;
 					}
+
+					if (subscriber.closed) {
+						return;
+					}
+
 					keepAliveTimer = setInterval(() => {
 						if (!subscriber || subscriber.closed) {
 							return;
 						}
 						subscriber.enqueue(this.textEncoder.encode(": keepalive\n\n"));
 					}, this.keepAliveMs);
-
-					input.signal?.addEventListener(
-						"abort",
-						() => {
-							subscriber?.close();
-							this.unsubscribe(input.runId, subscriber, keepAliveTimer);
-						},
-						{ once: true },
-					);
 				},
 				cancel: () => {
-					this.unsubscribe(input.runId, subscriber, keepAliveTimer);
+					this.unsubscribe(
+						input.runId,
+						subscriber,
+						keepAliveTimer,
+						input.signal,
+						abortHandler,
+					);
 				},
 			},
 			{
@@ -144,9 +174,14 @@ export class RunEventStreamBroker {
 		runId: string,
 		subscriber: StreamSubscriber | null,
 		keepAliveTimer: Timer | null,
+		signal?: AbortSignal,
+		abortHandler?: (() => void) | null,
 	) {
 		if (keepAliveTimer) {
 			clearInterval(keepAliveTimer);
+		}
+		if (signal && abortHandler) {
+			signal.removeEventListener("abort", abortHandler);
 		}
 		if (!subscriber) {
 			return;
