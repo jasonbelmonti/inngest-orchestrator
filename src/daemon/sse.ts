@@ -26,25 +26,29 @@ export class RunEventStreamBroker {
 			options.maxBufferedBytes ?? DEFAULT_MAX_BUFFERED_BYTES;
 	}
 
-	openStream(runId: string, signal?: AbortSignal) {
+	openStream(input: {
+		runId: string;
+		signal?: AbortSignal;
+		resolveInitialEvents?: () => StoredRunEvent[];
+	}) {
 		let keepAliveTimer: Timer | null = null;
 		let subscriber: StreamSubscriber | null = null;
 
 		const stream = new ReadableStream<Uint8Array>(
 			{
 				start: (controller) => {
-					if (signal?.aborted) {
+					if (input.signal?.aborted) {
 						controller.close();
 						return;
 					}
 
-					const subscriberSet = this.getSubscriberSet(runId);
+					const subscriberSet = this.getSubscriberSet(input.runId);
 					subscriber = {
 						enqueue: (chunk) => {
 							const desiredSize = controller.desiredSize;
 							if (desiredSize === null || desiredSize < chunk.byteLength) {
 								subscriber?.close();
-								this.unsubscribe(runId, subscriber, keepAliveTimer);
+								this.unsubscribe(input.runId, subscriber, keepAliveTimer);
 								return false;
 							}
 
@@ -62,6 +66,13 @@ export class RunEventStreamBroker {
 					};
 
 					subscriberSet.add(subscriber);
+					for (const event of input.resolveInitialEvents?.() ?? []) {
+						if (
+							!subscriber.enqueue(this.textEncoder.encode(formatEvent(event)))
+						) {
+							return;
+						}
+					}
 					keepAliveTimer = setInterval(() => {
 						if (!subscriber || subscriber.closed) {
 							return;
@@ -69,17 +80,17 @@ export class RunEventStreamBroker {
 						subscriber.enqueue(this.textEncoder.encode(": keepalive\n\n"));
 					}, this.keepAliveMs);
 
-					signal?.addEventListener(
+					input.signal?.addEventListener(
 						"abort",
 						() => {
 							subscriber?.close();
-							this.unsubscribe(runId, subscriber, keepAliveTimer);
+							this.unsubscribe(input.runId, subscriber, keepAliveTimer);
 						},
 						{ once: true },
 					);
 				},
 				cancel: () => {
-					this.unsubscribe(runId, subscriber, keepAliveTimer);
+					this.unsubscribe(input.runId, subscriber, keepAliveTimer);
 				},
 			},
 			{

@@ -9,6 +9,7 @@ import {
 	initializeRunStore,
 	insertRunEvent,
 	listRunProjections,
+	listStoredRunEventsAfter,
 	listStoredRunEvents,
 	readStoredRunEvent,
 	readAllStoredRunEvents,
@@ -130,6 +131,10 @@ export class SQLiteRunStore {
 
 	listEvents(runId: string) {
 		return listStoredRunEvents(this.database, runId);
+	}
+
+	listEventsAfter(input: { runId: string; afterSequence: number }) {
+		return listStoredRunEventsAfter(this.database, input);
 	}
 
 	readEvent(input: { runId: string; sequence: number }) {

@@ -7,7 +7,10 @@ test("openStream does not subscribe aborted requests", async () => {
 	const abortController = new AbortController();
 	abortController.abort();
 
-	const response = broker.openStream("run-aborted", abortController.signal);
+	const response = broker.openStream({
+		runId: "run-aborted",
+		signal: abortController.signal,
+	});
 	const reader = response.body?.getReader();
 
 	expect(broker.subscriberCount("run-aborted")).toBe(0);
@@ -22,7 +25,10 @@ test("aborting an active stream removes the subscriber and closes the stream", a
 	const broker = new RunEventStreamBroker({ keepAliveMs: 60_000 });
 	const abortController = new AbortController();
 
-	const response = broker.openStream("run-live", abortController.signal);
+	const response = broker.openStream({
+		runId: "run-live",
+		signal: abortController.signal,
+	});
 	const reader = response.body?.getReader();
 
 	expect(broker.subscriberCount("run-live")).toBe(1);
@@ -42,7 +48,7 @@ test("frames larger than the remaining queue budget drop slow subscribers", asyn
 		keepAliveMs: 60_000,
 		maxBufferedBytes: 256,
 	});
-	const response = broker.openStream("run-slow");
+	const response = broker.openStream({ runId: "run-slow" });
 	const reader = response.body?.getReader();
 
 	expect(broker.subscriberCount("run-slow")).toBe(1);
@@ -63,6 +69,34 @@ test("frames larger than the remaining queue budget drop slow subscribers", asyn
 		done: true,
 		value: undefined,
 	});
+});
+
+test("openStream enqueues replay events before live delivery", async () => {
+	const broker = new RunEventStreamBroker({ keepAliveMs: 60_000 });
+	const subscriberCounts: number[] = [];
+	const response = broker.openStream({
+		runId: "run-replay",
+		resolveInitialEvents: () => {
+			subscriberCounts.push(broker.subscriberCount("run-replay"));
+			return [makeStoredEvent(1, "replay")];
+		},
+	});
+	const reader = response.body?.getReader();
+
+	expect(broker.subscriberCount("run-replay")).toBe(1);
+	expect(subscriberCounts).toEqual([1]);
+	await expect(reader?.read()).resolves.toMatchObject({
+		done: false,
+		value: expect.any(Uint8Array),
+	});
+
+	broker.publish("run-replay", [makeStoredEvent(2, "live")]);
+
+	await expect(reader?.read()).resolves.toMatchObject({
+		done: false,
+		value: expect.any(Uint8Array),
+	});
+	await reader?.cancel();
 });
 
 function getSubscriberBuckets(broker: RunEventStreamBroker) {

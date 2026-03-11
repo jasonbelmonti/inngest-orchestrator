@@ -72,6 +72,21 @@ export function listStoredRunEvents(database: Database, runId: string) {
 	return rows.map((row) => mapStoredRunEvent(row));
 }
 
+export function listStoredRunEventsAfter(
+	database: Database,
+	input: { runId: string; afterSequence: number },
+) {
+	const rows = database
+		.query<EventRow, [string, number]>(
+			`SELECT *
+			FROM run_events
+			WHERE run_id = ?1 AND sequence > ?2
+			ORDER BY sequence ASC`,
+		)
+		.all(input.runId, input.afterSequence);
+	return rows.map((row) => mapStoredRunEvent(row));
+}
+
 export function readStoredRunEvent(
 	database: Database,
 	input: { runId: string; sequence: number },
