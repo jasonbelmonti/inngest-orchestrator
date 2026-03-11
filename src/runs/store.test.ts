@@ -423,6 +423,30 @@ describe("SQLiteRunStore", () => {
 			createdAt: "2026-03-10T10:00:00.000Z",
 			launch: makeResolvedLaunchRequest(),
 		});
+		store.appendEvent({
+			runId: "run-004",
+			event: {
+				type: "run.started",
+				occurredAt: "2026-03-10T10:00:00.250Z",
+			},
+		});
+		store.appendEvent({
+			runId: "run-004",
+			event: {
+				type: "step.started",
+				occurredAt: "2026-03-10T10:00:00.500Z",
+				stepId: "approval",
+			},
+		});
+		store.appendEvent({
+			runId: "run-004",
+			event: {
+				type: "approval.requested",
+				occurredAt: "2026-03-10T10:00:00.750Z",
+				approvalId: "approval-cancelled",
+				stepId: "approval",
+			},
+		});
 		const cancelled = store.appendEvent({
 			runId: "run-004",
 			event: {
@@ -435,6 +459,14 @@ describe("SQLiteRunStore", () => {
 			status: "cancelled",
 			cancelledAt: "2026-03-10T10:00:01.000Z",
 			failureMessage: "User cancelled the run.",
+			approvals: [
+				expect.objectContaining({
+					approvalId: "approval-cancelled",
+					status: "rejected",
+					decision: "rejected",
+					respondedAt: "2026-03-10T10:00:01.000Z",
+				}),
+			],
 		});
 
 		store.createRun({

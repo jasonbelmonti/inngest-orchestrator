@@ -76,7 +76,7 @@ function requireDecision(input: unknown) {
 }
 
 function requireNonEmptyString(input: unknown, message: string) {
-	if (typeof input === "string" && input.length > 0) {
+	if (typeof input === "string" && input.trim().length > 0) {
 		return input;
 	}
 

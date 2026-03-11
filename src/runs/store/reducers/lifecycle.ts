@@ -161,5 +161,15 @@ export function reduceRunCancelled(
 		failureMessage: event.reason ?? existing.failureMessage,
 		updatedAt: event.occurredAt,
 		latestEventSequence: event.sequence,
+		approvals: existing.approvals.map((approval) =>
+			approval.status === "pending"
+				? {
+						...approval,
+						status: "rejected",
+						decision: "rejected",
+						respondedAt: event.occurredAt,
+					}
+				: approval,
+		),
 	};
 }

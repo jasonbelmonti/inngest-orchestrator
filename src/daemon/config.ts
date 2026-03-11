@@ -10,6 +10,7 @@ export interface DaemonRuntimeConfig {
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3017;
 const DEFAULT_IDLE_TIMEOUT_SECONDS = 120;
+const ALLOWED_LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 const DEFAULT_DATABASE_PATH = resolve(
 	import.meta.dir,
 	"../../.local/inngest-orchestrator.sqlite",
@@ -19,11 +20,25 @@ export function resolveDaemonRuntimeConfig(
 	env: NodeJS.ProcessEnv = process.env,
 ): DaemonRuntimeConfig {
 	return {
-		host: env.INNGEST_ORCHESTRATOR_HOST || DEFAULT_HOST,
+		host: parseHost(env.INNGEST_ORCHESTRATOR_HOST),
 		port: parsePort(env.INNGEST_ORCHESTRATOR_PORT),
 		databasePath: env.INNGEST_ORCHESTRATOR_DB_PATH || DEFAULT_DATABASE_PATH,
 		idleTimeoutSeconds: DEFAULT_IDLE_TIMEOUT_SECONDS,
 	};
+}
+
+function parseHost(input: string | undefined) {
+	if (!input) {
+		return DEFAULT_HOST;
+	}
+
+	if (!ALLOWED_LOOPBACK_HOSTS.has(input)) {
+		throw new Error(
+			`INNGEST_ORCHESTRATOR_HOST must be a loopback host. Received "${input}".`,
+		);
+	}
+
+	return input;
 }
 
 function parsePort(input: string | undefined) {

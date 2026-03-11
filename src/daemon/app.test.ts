@@ -339,6 +339,51 @@ describe("daemon app", () => {
 		});
 	});
 
+	test("POST /runs/:id/control rejects whitespace-only identifiers", async () => {
+		const harness = await createDaemonTestHarness();
+		await seedActiveStepRun(harness, "run-invalid-identifiers");
+
+		const approvalIdResponse = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-invalid-identifiers/control",
+			{
+				action: "request_approval",
+				approvalId: " ",
+				stepId: "implement",
+			},
+		);
+
+		expect(approvalIdResponse.status).toBe(400);
+		expect(await expectJson(approvalIdResponse)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "invalid_http_input",
+				message: '"approvalId" must be a non-empty string.',
+			}),
+		});
+
+		const stepIdResponse = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-invalid-identifiers/control",
+			{
+				action: "request_approval",
+				approvalId: "approval-004",
+				stepId: " ",
+			},
+		);
+
+		expect(stepIdResponse.status).toBe(400);
+		expect(await expectJson(stepIdResponse)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "invalid_http_input",
+				message: '"stepId" must be a non-empty string.',
+			}),
+		});
+	});
+
 	test("POST /runs returns structured JSON for malformed request bodies", async () => {
 		const harness = await createDaemonTestHarness();
 

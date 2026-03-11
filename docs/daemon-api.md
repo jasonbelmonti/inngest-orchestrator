@@ -18,7 +18,7 @@ Default runtime settings:
 
 Optional environment overrides:
 
-- `INNGEST_ORCHESTRATOR_HOST`
+- `INNGEST_ORCHESTRATOR_HOST` for loopback-only hosts (`127.0.0.1`, `localhost`, or `::1`)
 - `INNGEST_ORCHESTRATOR_PORT`
 - `INNGEST_ORCHESTRATOR_DB_PATH`
 
