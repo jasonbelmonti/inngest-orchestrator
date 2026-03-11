@@ -4,6 +4,7 @@ export type DaemonRouteMatch =
 	| { kind: "runs" }
 	| { kind: "run-detail"; runId: string }
 	| { kind: "run-control"; runId: string }
+	| { kind: "run-events"; runId: string }
 	| { kind: "not-found"; pathname: string };
 
 export function matchDaemonRoute(pathname: string): DaemonRouteMatch {
@@ -31,6 +32,15 @@ export function matchDaemonRoute(pathname: string): DaemonRouteMatch {
 		runId
 	) {
 		return { kind: "run-control", runId };
+	}
+
+	if (
+		segments.length === 3 &&
+		segments[0] === "runs" &&
+		segments[2] === "events" &&
+		runId
+	) {
+		return { kind: "run-events", runId };
 	}
 
 	return { kind: "not-found", pathname };

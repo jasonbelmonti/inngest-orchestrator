@@ -4,6 +4,7 @@ import {
 	handleListRuns,
 	handleReadRun,
 	handleRunControl,
+	handleRunEvents,
 	type DaemonHandlerOptions,
 } from "./handlers.ts";
 import { matchDaemonRoute } from "./route-matching.ts";
@@ -47,6 +48,21 @@ export function createDaemonFetchHandler(options: DaemonHandlerOptions) {
 						});
 					}
 					return await handleRunControl(request, route.runId, options);
+				case "run-events":
+					if (request.method !== "GET") {
+						throw new DaemonHttpError({
+							status: 405,
+							code: "method_not_allowed",
+							message: `Method "${request.method}" is not allowed for "/runs/:id/events".`,
+							runId: route.runId,
+						});
+					}
+					return handleRunEvents(
+						route.runId,
+						options.store,
+						options.eventStreamBroker,
+						request,
+					);
 				case "not-found":
 					throw new DaemonHttpError({
 						status: 404,
@@ -69,7 +85,9 @@ export function createDaemonFetchHandler(options: DaemonHandlerOptions) {
 function deriveRunIdFromPath(pathname: string) {
 	try {
 		const route = matchDaemonRoute(pathname);
-		return route.kind === "run-detail" || route.kind === "run-control"
+		return route.kind === "run-detail" ||
+			route.kind === "run-control" ||
+			route.kind === "run-events"
 			? route.runId
 			: undefined;
 	} catch {

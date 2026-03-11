@@ -149,6 +149,34 @@ Success status: `200`
 
 Unknown runs return `404` with `code: "run_store_not_found"`.
 
+## GET /runs/:id/events
+
+Opens a live per-run Server-Sent Events stream.
+
+Success status: `200`
+
+Response headers:
+
+- `content-type: text/event-stream; charset=utf-8`
+- `cache-control: no-cache`
+- `connection: keep-alive`
+
+SSE frames use the persisted event shape:
+
+```text
+id: 3
+event: run.cancelled
+data: {"runId":"run-001","sequence":3,"type":"run.cancelled","occurredAt":"2026-03-11T12:00:00.000Z","reason":"operator stopped run"}
+```
+
+Unknown runs return the normal JSON `404` envelope with `code: "run_store_not_found"`.
+
+Scope notes for `BEL-355`:
+
+- this is live fanout only
+- the stream emits events published after the subscription opens
+- replay, resume, and `Last-Event-ID` handling are not included yet
+
 ## POST /runs/:id/control
 
 Applies one control action to a persisted run.
@@ -192,6 +220,7 @@ Validation notes:
 - the daemon does not invent `approvalId` or `stepId`
 - the daemon does not add synthetic `step.started` or `step.completed` helpers
 - `request_approval` succeeds only when the run is already on an active step
+- `approvalId`, `stepId`, `reason`, `message`, and `comment` are capped at `65536` UTF-8 bytes
 - state transition validation remains owned by the run store
 
 ## Status Codes
@@ -211,7 +240,7 @@ Validation notes:
 
 Not included yet:
 
-- no SSE stream on `GET /runs/:id/events`
+- no SSE replay or resume semantics on `GET /runs/:id/events`
 - no Inngest workflow execution
 - no managed provider sessions
 

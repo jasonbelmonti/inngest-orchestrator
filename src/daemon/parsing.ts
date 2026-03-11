@@ -1,6 +1,10 @@
 import { DaemonHttpError } from "./errors.ts";
 import type { RunControlRequest } from "./types.ts";
 
+const MAX_CONTROL_TEXT_BYTES = 64 * 1024;
+const MAX_CONTROL_IDENTIFIER_BYTES = 64 * 1024;
+const textEncoder = new TextEncoder();
+
 export async function readJsonBody(request: Request) {
 	assertJsonContentType(request);
 
@@ -34,14 +38,11 @@ export function parseRunControlRequest(input: unknown): RunControlRequest {
 		case "request_approval":
 			return {
 				action: "request_approval",
-				approvalId: requireNonEmptyString(
+				approvalId: requireBoundedNonEmptyString(
 					input.approvalId,
-					'"approvalId" must be a non-empty string.',
+					"approvalId",
 				),
-				stepId: requireNonEmptyString(
-					input.stepId,
-					'"stepId" must be a non-empty string.',
-				),
+				stepId: requireBoundedNonEmptyString(input.stepId, "stepId"),
 				...parseOptionalStringField(
 					input,
 					"message",
@@ -51,9 +52,9 @@ export function parseRunControlRequest(input: unknown): RunControlRequest {
 		case "resolve_approval":
 			return {
 				action: "resolve_approval",
-				approvalId: requireNonEmptyString(
+				approvalId: requireBoundedNonEmptyString(
 					input.approvalId,
-					'"approvalId" must be a non-empty string.',
+					"approvalId",
 				),
 				decision: requireDecision(input.decision),
 				...parseOptionalStringField(
@@ -77,12 +78,13 @@ function requireDecision(input: unknown) {
 	throw invalidControlRequest('"decision" must be "approved" or "rejected".');
 }
 
-function requireNonEmptyString(input: unknown, message: string) {
+function requireBoundedNonEmptyString(input: unknown, fieldName: string) {
 	if (typeof input === "string" && input.trim().length > 0) {
+		assertMaxUtf8Bytes(input, fieldName, MAX_CONTROL_IDENTIFIER_BYTES);
 		return input;
 	}
 
-	throw invalidControlRequest(message);
+	throw invalidControlRequest(`"${fieldName}" must be a non-empty string.`);
 }
 
 function invalidControlRequest(message: string) {
@@ -110,7 +112,21 @@ function parseOptionalStringField(
 		throw invalidControlRequest(message);
 	}
 
+	assertMaxUtf8Bytes(input[fieldName], fieldName, MAX_CONTROL_TEXT_BYTES);
+
 	return { [fieldName]: input[fieldName] } as Record<string, string>;
+}
+
+function assertMaxUtf8Bytes(
+	value: string,
+	fieldName: string,
+	maxBytes: number,
+) {
+	if (textEncoder.encode(value).byteLength > maxBytes) {
+		throw invalidControlRequest(
+			`"${fieldName}" must be at most ${maxBytes} UTF-8 bytes.`,
+		);
+	}
 }
 
 function assertJsonContentType(request: Request) {
