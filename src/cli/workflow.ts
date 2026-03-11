@@ -256,9 +256,16 @@ function parseWorkflowOptions(args: string[]) {
 
 	for (let index = 0; index < args.length; index += 1) {
 		const value = args[index];
+		if (value === undefined) {
+			throw new CliError({
+				code: "invalid_cli_arguments",
+				message: "Invalid CLI argument list.",
+			});
+		}
+
 		if (value === "--config-root") {
 			const nextValue = args[index + 1];
-			if (!nextValue || nextValue.startsWith("-")) {
+			if (nextValue === undefined || nextValue.startsWith("-")) {
 				throw new CliError({
 					code: "invalid_cli_arguments",
 					message: "--config-root requires a path value.",
