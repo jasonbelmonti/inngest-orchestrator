@@ -110,6 +110,70 @@ describe("SQLiteRunStore", () => {
 		store.close();
 	});
 
+	test("clears transient step failure messages after a later successful completion", () => {
+		const store = SQLiteRunStore.open();
+
+		store.createRun({
+			runId: "run-002b",
+			createdAt: "2026-03-10T10:00:00.000Z",
+			launch: makeResolvedLaunchRequest(),
+		});
+		store.appendEvent({
+			runId: "run-002b",
+			event: {
+				type: "run.started",
+				occurredAt: "2026-03-10T10:00:01.000Z",
+			},
+		});
+		store.appendEvent({
+			runId: "run-002b",
+			event: {
+				type: "step.started",
+				occurredAt: "2026-03-10T10:00:02.000Z",
+				stepId: "step-a",
+			},
+		});
+		store.appendEvent({
+			runId: "run-002b",
+			event: {
+				type: "step.failed",
+				occurredAt: "2026-03-10T10:00:03.000Z",
+				stepId: "step-a",
+				message: "first failed",
+			},
+		});
+		store.appendEvent({
+			runId: "run-002b",
+			event: {
+				type: "step.started",
+				occurredAt: "2026-03-10T10:00:04.000Z",
+				stepId: "step-b",
+			},
+		});
+		store.appendEvent({
+			runId: "run-002b",
+			event: {
+				type: "step.completed",
+				occurredAt: "2026-03-10T10:00:05.000Z",
+				stepId: "step-b",
+			},
+		});
+		const result = store.appendEvent({
+			runId: "run-002b",
+			event: {
+				type: "run.completed",
+				occurredAt: "2026-03-10T10:00:06.000Z",
+			},
+		});
+
+		expect(result).toMatchObject({
+			status: "completed",
+			failureMessage: null,
+		});
+
+		store.close();
+	});
+
 	test("tracks approval requests and resolution state", () => {
 		const store = SQLiteRunStore.open();
 
@@ -232,6 +296,61 @@ describe("SQLiteRunStore", () => {
 		store.close();
 	});
 
+	test("round-trips empty-string approval text", () => {
+		const store = SQLiteRunStore.open();
+
+		store.createRun({
+			runId: "run-003c",
+			createdAt: "2026-03-10T10:00:00.000Z",
+			launch: makeResolvedLaunchRequest(),
+		});
+		store.appendEvent({
+			runId: "run-003c",
+			event: {
+				type: "run.started",
+				occurredAt: "2026-03-10T10:00:01.000Z",
+			},
+		});
+		store.appendEvent({
+			runId: "run-003c",
+			event: {
+				type: "step.started",
+				occurredAt: "2026-03-10T10:00:02.000Z",
+				stepId: "approval",
+			},
+		});
+		store.appendEvent({
+			runId: "run-003c",
+			event: {
+				type: "approval.requested",
+				occurredAt: "2026-03-10T10:00:03.000Z",
+				approvalId: "approval-empty",
+				stepId: "approval",
+				message: "",
+			},
+		});
+		const result = store.appendEvent({
+			runId: "run-003c",
+			event: {
+				type: "approval.resolved",
+				occurredAt: "2026-03-10T10:00:04.000Z",
+				approvalId: "approval-empty",
+				decision: "approved",
+				comment: "",
+			},
+		});
+
+		expect(result.approvals).toEqual([
+			expect.objectContaining({
+				approvalId: "approval-empty",
+				message: "",
+				comment: "",
+			}),
+		]);
+
+		store.close();
+	});
+
 	test("persists cancel and failure terminal states", () => {
 		const store = SQLiteRunStore.open();
 
@@ -348,6 +467,47 @@ describe("SQLiteRunStore", () => {
 				code: "run_store_invalid_transition",
 			}),
 		);
+
+		const terminalStore = SQLiteRunStore.open();
+		terminalStore.createRun({
+			runId: "run-006b",
+			createdAt: "2026-03-10T10:00:00.000Z",
+			launch: makeResolvedLaunchRequest(),
+		});
+		terminalStore.appendEvent({
+			runId: "run-006b",
+			event: {
+				type: "run.started",
+				occurredAt: "2026-03-10T10:00:01.000Z",
+			},
+		});
+		terminalStore.appendEvent({
+			runId: "run-006b",
+			event: {
+				type: "run.completed",
+				occurredAt: "2026-03-10T10:00:02.000Z",
+			},
+		});
+
+		expect(() =>
+			terminalStore.appendEvent({
+				runId: "run-006b",
+				event: {
+					type: "artifact.created",
+					occurredAt: "2026-03-10T10:00:03.000Z",
+					artifactId: "artifact-terminal",
+					stepId: "step",
+					kind: "report",
+					relativePath: "summary.md",
+				},
+			}),
+		).toThrow(
+			expect.objectContaining({
+				code: "run_store_invalid_transition",
+			}),
+		);
+
+		terminalStore.close();
 
 		expect(() =>
 			store.appendEvent({

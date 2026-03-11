@@ -13,7 +13,7 @@ export function reduceArtifactCreated(
 	const existing = assertRunState(state, event.runId);
 	assertRunStatus(
 		existing,
-		["running", "waiting_for_approval", "completed", "failed", "cancelled"],
+		["running", "waiting_for_approval"],
 		event.type,
 	);
 	if (existing.artifacts.some((artifact) => artifact.artifactId === event.artifactId)) {

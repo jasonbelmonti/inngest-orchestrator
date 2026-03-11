@@ -38,7 +38,7 @@ export function reduceApprovalRequested(
 		requestedAt: event.occurredAt,
 		respondedAt: null,
 		decision: null,
-		...(event.message ? { message: event.message } : {}),
+		...(event.message !== undefined ? { message: event.message } : {}),
 	};
 	return {
 		...existing,
@@ -83,7 +83,7 @@ export function reduceApprovalResolved(
 						status: event.decision,
 						decision: event.decision,
 						respondedAt: event.occurredAt,
-						...(event.comment ? { comment: event.comment } : {}),
+						...(event.comment !== undefined ? { comment: event.comment } : {}),
 				  }
 				: candidate,
 		),

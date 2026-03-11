@@ -78,8 +78,8 @@ export function mapRunProjectionRecord(input: {
 			requestedAt: approval.requested_at,
 			respondedAt: approval.responded_at,
 			decision: approval.decision,
-			...(approval.message ? { message: approval.message } : {}),
-			...(approval.comment ? { comment: approval.comment } : {}),
+			...(approval.message !== null ? { message: approval.message } : {}),
+			...(approval.comment !== null ? { comment: approval.comment } : {}),
 		})),
 		artifacts: input.artifacts.map((artifact) => ({
 			artifactId: artifact.artifact_id,

@@ -41,6 +41,7 @@ export function reduceRunStarted(
 		...existing,
 		status: "running",
 		startedAt: event.occurredAt,
+		failureMessage: null,
 		updatedAt: event.occurredAt,
 		latestEventSequence: event.sequence,
 	};
@@ -61,6 +62,7 @@ export function reduceStepStarted(
 	return {
 		...existing,
 		currentStepId: event.stepId,
+		failureMessage: null,
 		updatedAt: event.occurredAt,
 		latestEventSequence: event.sequence,
 	};
@@ -118,6 +120,7 @@ export function reduceRunCompleted(
 		status: "completed",
 		currentStepId: null,
 		completedAt: event.occurredAt,
+		failureMessage: null,
 		updatedAt: event.occurredAt,
 		latestEventSequence: event.sequence,
 	};
