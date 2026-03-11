@@ -27,6 +27,8 @@ Current operations:
 - `readRun(runId)`
 - `listRuns()`
 - `listEvents(runId)`
+- `readCursor(runId)`
+- `saveCursor({ runId, lastEventSequence, updatedAt })`
 - `rebuildProjections()`
 - `close()`
 
@@ -60,3 +62,6 @@ Persisted events currently support:
 Opening the store rebuilds derived tables from `run_events`.
 
 This keeps projections deterministic and makes restart recovery simple for the future daemon layer.
+
+Replay cursors are stored separately from derived projections and are not overwritten during
+projection rebuilds.

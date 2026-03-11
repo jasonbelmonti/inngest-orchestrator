@@ -11,8 +11,10 @@ import {
 	listRunProjections,
 	listStoredRunEvents,
 	readAllStoredRunEvents,
+	readRunEventCursor,
 	readRunProjection,
 	resetDerivedRunState,
+	writeRunEventCursor,
 	writeRunProjection,
 } from "./persistence.ts";
 import type {
@@ -93,6 +95,14 @@ export class SQLiteRunStore {
 
 	listEvents(runId: string) {
 		return listStoredRunEvents(this.database, runId);
+	}
+
+	readCursor(runId: string) {
+		return readRunEventCursor(this.database, runId);
+	}
+
+	saveCursor(input: { runId: string; lastEventSequence: number; updatedAt: string }) {
+		writeRunEventCursor(this.database, input);
 	}
 
 	rebuildProjections() {

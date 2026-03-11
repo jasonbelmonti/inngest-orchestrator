@@ -13,6 +13,12 @@ import {
 } from "./mapping.ts";
 import type { RunProjectionRecord, StoredRunEvent } from "./types.ts";
 
+interface RunEventCursorRow {
+	run_id: string;
+	last_event_sequence: number;
+	updated_at: string;
+}
+
 export function initializeRunStore(database: Database) {
 	database.exec("PRAGMA foreign_keys = ON;");
 	database.exec(RUN_STORE_SCHEMA);
@@ -75,6 +81,42 @@ export function readAllStoredRunEvents(database: Database) {
 		)
 		.all();
 	return rows.map((row) => mapStoredRunEvent(row));
+}
+
+export function readRunEventCursor(database: Database, runId: string) {
+	const row = database
+		.query<RunEventCursorRow, [string]>(
+			`SELECT *
+			FROM run_event_cursors
+			WHERE run_id = ?1`,
+		)
+		.get(runId);
+	if (!row) {
+		return null;
+	}
+	return {
+		runId: row.run_id,
+		lastEventSequence: row.last_event_sequence,
+		updatedAt: row.updated_at,
+	};
+}
+
+export function writeRunEventCursor(
+	database: Database,
+	input: { runId: string; lastEventSequence: number; updatedAt: string },
+) {
+	database
+		.query(
+			`INSERT INTO run_event_cursors (
+				run_id,
+				last_event_sequence,
+				updated_at
+			) VALUES (?1, ?2, ?3)
+			ON CONFLICT(run_id) DO UPDATE SET
+				last_event_sequence = excluded.last_event_sequence,
+				updated_at = excluded.updated_at`,
+		)
+		.run(input.runId, input.lastEventSequence, input.updatedAt);
 }
 
 export function insertRunEvent(database: Database, event: StoredRunEvent) {
@@ -222,19 +264,6 @@ export function writeRunProjection(
 				serializeArtifactMetadata(artifact.metadata),
 			);
 	}
-
-	database
-		.query(
-			`INSERT INTO run_event_cursors (
-				run_id,
-				last_event_sequence,
-				updated_at
-			) VALUES (?1, ?2, ?3)
-			ON CONFLICT(run_id) DO UPDATE SET
-				last_event_sequence = excluded.last_event_sequence,
-				updated_at = excluded.updated_at`,
-		)
-		.run(state.runId, state.latestEventSequence, state.updatedAt);
 }
 
 export function resetDerivedRunState(database: Database) {
@@ -242,7 +271,6 @@ export function resetDerivedRunState(database: Database) {
 		DELETE FROM run_projections;
 		DELETE FROM approval_requests;
 		DELETE FROM artifacts;
-		DELETE FROM run_event_cursors;
 	`);
 }
 

@@ -296,6 +296,40 @@ describe("SQLiteRunStore", () => {
 		store.close();
 	});
 
+	test("preserves replay cursors across projection rebuilds", async () => {
+		const databasePath = await createDatabasePath();
+		const first = SQLiteRunStore.open({ databasePath });
+
+		first.createRun({
+			runId: "run-003d",
+			createdAt: "2026-03-10T10:00:00.000Z",
+			launch: makeResolvedLaunchRequest(),
+		});
+		first.appendEvent({
+			runId: "run-003d",
+			event: {
+				type: "run.started",
+				occurredAt: "2026-03-10T10:00:01.000Z",
+			},
+		});
+		first.saveCursor({
+			runId: "run-003d",
+			lastEventSequence: 1,
+			updatedAt: "2026-03-10T10:00:02.000Z",
+		});
+		first.close();
+
+		const reopened = SQLiteRunStore.open({ databasePath });
+
+		expect(reopened.readCursor("run-003d")).toEqual({
+			runId: "run-003d",
+			lastEventSequence: 1,
+			updatedAt: "2026-03-10T10:00:02.000Z",
+		});
+
+		reopened.close();
+	});
+
 	test("round-trips empty-string approval text", () => {
 		const store = SQLiteRunStore.open();
 
@@ -524,6 +558,75 @@ describe("SQLiteRunStore", () => {
 				code: "run_store_invalid_transition",
 			}),
 		);
+
+		const artifactStore = SQLiteRunStore.open();
+		artifactStore.createRun({
+			runId: "run-006c",
+			createdAt: "2026-03-10T10:00:00.000Z",
+			launch: makeResolvedLaunchRequest(),
+		});
+		artifactStore.appendEvent({
+			runId: "run-006c",
+			event: {
+				type: "run.started",
+				occurredAt: "2026-03-10T10:00:01.000Z",
+			},
+		});
+		artifactStore.appendEvent({
+			runId: "run-006c",
+			event: {
+				type: "step.started",
+				occurredAt: "2026-03-10T10:00:02.000Z",
+				stepId: "step-a",
+			},
+		});
+
+		expect(() =>
+			artifactStore.appendEvent({
+				runId: "run-006c",
+				event: {
+					type: "artifact.created",
+					occurredAt: "2026-03-10T10:00:03.000Z",
+					artifactId: "artifact-mismatch",
+					stepId: "step-b",
+					kind: "report",
+					relativePath: "summary.md",
+				},
+			}),
+		).toThrow(
+			expect.objectContaining({
+				code: "run_store_invalid_transition",
+			}),
+		);
+
+		artifactStore.appendEvent({
+			runId: "run-006c",
+			event: {
+				type: "step.completed",
+				occurredAt: "2026-03-10T10:00:04.000Z",
+				stepId: "step-a",
+			},
+		});
+
+		expect(() =>
+			artifactStore.appendEvent({
+				runId: "run-006c",
+				event: {
+					type: "artifact.created",
+					occurredAt: "2026-03-10T10:00:05.000Z",
+					artifactId: "artifact-no-active-step",
+					stepId: "step-a",
+					kind: "report",
+					relativePath: "summary.md",
+				},
+			}),
+		).toThrow(
+			expect.objectContaining({
+				code: "run_store_invalid_transition",
+			}),
+		);
+
+		artifactStore.close();
 
 		expect(() =>
 			store.appendEvent({

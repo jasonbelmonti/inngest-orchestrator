@@ -16,6 +16,12 @@ export function reduceArtifactCreated(
 		["running", "waiting_for_approval"],
 		event.type,
 	);
+	if (existing.currentStepId !== event.stepId) {
+		throw new RunStoreError({
+			code: "run_store_invalid_transition",
+			message: `Artifact "${event.artifactId}" must target the active step for run "${event.runId}".`,
+		});
+	}
 	if (existing.artifacts.some((artifact) => artifact.artifactId === event.artifactId)) {
 		throw new RunStoreError({
 			code: "run_store_conflict",
