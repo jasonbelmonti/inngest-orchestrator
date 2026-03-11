@@ -9,6 +9,7 @@ import {
 	makeWorkflow,
 } from "../workflows/test-fixtures.ts";
 import { createDaemonApp } from "./app.ts";
+import { RunEventStreamBroker } from "./sse.ts";
 
 const tempDirectories: string[] = [];
 const openStores: SQLiteRunStore[] = [];
@@ -73,6 +74,7 @@ export async function createDaemonTestHarness() {
 
 	const store = SQLiteRunStore.open({ databasePath });
 	openStores.push(store);
+	const eventStreamBroker = new RunEventStreamBroker({ keepAliveMs: 60_000 });
 
 	return {
 		configRoot,
@@ -82,8 +84,10 @@ export async function createDaemonTestHarness() {
 			"inngest-orchestrator": orchestratorPath,
 		},
 		store,
+		eventStreamBroker,
 		app: createDaemonApp({
 			store,
+			eventStreamBroker,
 			generateRunId: makeSequentialRunIdGenerator(),
 			now: () => "2026-03-11T12:00:00.000Z",
 		}),

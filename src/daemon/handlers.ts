@@ -5,9 +5,11 @@ import { toRunControlEvent } from "./control-events.ts";
 import { parseRunControlRequest, readJsonBody } from "./parsing.ts";
 import { successResponse } from "./responses.ts";
 import { summarizeRun } from "./run-mappers.ts";
+import type { RunEventStreamBroker } from "./sse.ts";
 
 export interface DaemonHandlerOptions {
 	store: SQLiteRunStore;
+	eventStreamBroker: RunEventStreamBroker;
 	generateRunId: () => string;
 	now: () => string;
 }
@@ -27,6 +29,12 @@ export async function handleCreateRun(
 		startedAt: occurredAt,
 		launch,
 	});
+	publishEventSequences(
+		options.store,
+		options.eventStreamBroker,
+		runId,
+		[1, 2],
+	);
 
 	return successResponse(201, { run });
 }
@@ -51,6 +59,25 @@ export function handleReadRun(runId: string, store: SQLiteRunStore) {
 	return successResponse(200, { run });
 }
 
+export function handleRunEvents(
+	runId: string,
+	store: SQLiteRunStore,
+	eventStreamBroker: RunEventStreamBroker,
+	request: Request,
+) {
+	const run = store.readRun(runId);
+	if (!run) {
+		throw new DaemonHttpError({
+			status: 404,
+			code: "run_store_not_found",
+			message: `Run "${runId}" was not found.`,
+			runId,
+		});
+	}
+
+	return eventStreamBroker.openStream(runId, request.signal);
+}
+
 export async function handleRunControl(
 	request: Request,
 	runId: string,
@@ -63,6 +90,25 @@ export async function handleRunControl(
 		runId,
 		event: toRunControlEvent(control, occurredAt),
 	});
+	publishEventSequences(options.store, options.eventStreamBroker, runId, [
+		run.latestEventSequence,
+	]);
 
 	return successResponse(200, { run });
+}
+
+function publishEventSequences(
+	store: SQLiteRunStore,
+	eventStreamBroker: RunEventStreamBroker,
+	runId: string,
+	sequences: number[],
+) {
+	const sequenceSet = new Set(sequences);
+	const events = store
+		.listEvents(runId)
+		.filter((event) => sequenceSet.has(event.sequence));
+	if (events.length === 0) {
+		return;
+	}
+	eventStreamBroker.publish(runId, events);
 }

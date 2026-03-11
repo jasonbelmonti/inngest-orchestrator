@@ -166,6 +166,166 @@ describe("daemon app", () => {
 		});
 	});
 
+	test("GET /runs/:id/events returns JSON 404 for unknown runs", async () => {
+		const harness = await createDaemonTestHarness();
+
+		const response = await dispatchDaemonRequest(
+			harness.app,
+			"GET",
+			"/runs/missing/events",
+		);
+
+		expect(response.status).toBe(404);
+		expect(response.headers.get("content-type")).toContain("application/json");
+		expect(await expectJson(response)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "run_store_not_found",
+				runId: "missing",
+			}),
+		});
+	});
+
+	test("GET /runs/:id/events streams live control events with SSE framing", async () => {
+		const harness = await createDaemonTestHarness();
+
+		await dispatchDaemonRequest(harness.app, "POST", "/runs", {
+			workflowId: "cross-repo-bugfix",
+			configRoot: harness.configRoot,
+			repoBindings: harness.repoBindings,
+		});
+
+		const streamResponse = await dispatchDaemonRequest(
+			harness.app,
+			"GET",
+			"/runs/run-001/events",
+		);
+
+		expect(streamResponse.status).toBe(200);
+		expect(streamResponse.headers.get("content-type")).toContain(
+			"text/event-stream",
+		);
+		expect(streamResponse.headers.get("cache-control")).toBe("no-cache");
+
+		const eventPromise = readSseEvents(streamResponse, 1);
+
+		const controlResponse = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-001/control",
+			{
+				action: "cancel",
+				reason: "operator stopped run",
+			},
+		);
+		expect(controlResponse.status).toBe(200);
+
+		await expect(eventPromise).resolves.toEqual([
+			{
+				id: "3",
+				event: "run.cancelled",
+				data: {
+					runId: "run-001",
+					sequence: 3,
+					type: "run.cancelled",
+					occurredAt: "2026-03-11T12:00:00.000Z",
+					reason: "operator stopped run",
+				},
+			},
+		]);
+	});
+
+	test("GET /runs/:id/events streams multiple sequential events in order", async () => {
+		const harness = await createDaemonTestHarness();
+		await seedActiveStepRun(harness, "run-stream-order");
+
+		const streamResponse = await dispatchDaemonRequest(
+			harness.app,
+			"GET",
+			"/runs/run-stream-order/events",
+		);
+
+		const eventsPromise = readSseEvents(streamResponse, 2);
+
+		const requestApprovalResponse = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-stream-order/control",
+			{
+				action: "request_approval",
+				approvalId: "approval-010",
+				stepId: "implement",
+				message: "Ship it?",
+			},
+		);
+		expect(requestApprovalResponse.status).toBe(200);
+
+		const resolveApprovalResponse = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-stream-order/control",
+			{
+				action: "resolve_approval",
+				approvalId: "approval-010",
+				decision: "approved",
+				comment: "Looks good.",
+			},
+		);
+		expect(resolveApprovalResponse.status).toBe(200);
+
+		await expect(eventsPromise).resolves.toEqual([
+			{
+				id: "4",
+				event: "approval.requested",
+				data: {
+					runId: "run-stream-order",
+					sequence: 4,
+					type: "approval.requested",
+					occurredAt: "2026-03-11T12:00:00.000Z",
+					approvalId: "approval-010",
+					stepId: "implement",
+					message: "Ship it?",
+				},
+			},
+			{
+				id: "5",
+				event: "approval.resolved",
+				data: {
+					runId: "run-stream-order",
+					sequence: 5,
+					type: "approval.resolved",
+					occurredAt: "2026-03-11T12:00:00.000Z",
+					approvalId: "approval-010",
+					decision: "approved",
+					comment: "Looks good.",
+				},
+			},
+		]);
+	});
+
+	test("SSE subscriptions clean up on disconnect", async () => {
+		const harness = await createDaemonTestHarness();
+
+		await dispatchDaemonRequest(harness.app, "POST", "/runs", {
+			workflowId: "cross-repo-bugfix",
+			configRoot: harness.configRoot,
+			repoBindings: harness.repoBindings,
+		});
+
+		const streamResponse = await dispatchDaemonRequest(
+			harness.app,
+			"GET",
+			"/runs/run-001/events",
+		);
+
+		expect(harness.eventStreamBroker.subscriberCount("run-001")).toBe(1);
+
+		await streamResponse.body?.cancel();
+		await Promise.resolve();
+
+		expect(harness.eventStreamBroker.subscriberCount("run-001")).toBe(0);
+	});
+
 	test("POST /runs/:id/control cancels a persisted run", async () => {
 		const harness = await createDaemonTestHarness();
 
@@ -609,4 +769,76 @@ describe("daemon app", () => {
 
 async function expectJson(response: Response) {
 	return readDaemonJson(response);
+}
+
+async function readSseEvents(response: Response, expectedCount: number) {
+	const reader = response.body?.getReader();
+	if (!reader) {
+		throw new Error("Expected SSE response body to be readable.");
+	}
+
+	const decoder = new TextDecoder();
+	const events: Array<{
+		id: string | null;
+		event: string | null;
+		data: unknown;
+	}> = [];
+	let buffer = "";
+
+	try {
+		while (events.length < expectedCount) {
+			const result = await reader.read();
+			if (result.done) {
+				break;
+			}
+
+			buffer += decoder.decode(result.value, { stream: true });
+			const messages = buffer.split("\n\n");
+			buffer = messages.pop() ?? "";
+
+			for (const message of messages) {
+				const event = parseSseMessage(message);
+				if (event) {
+					events.push(event);
+					if (events.length === expectedCount) {
+						break;
+					}
+				}
+			}
+		}
+	} finally {
+		await reader.cancel();
+	}
+
+	return events;
+}
+
+function parseSseMessage(message: string) {
+	if (message.trim().length === 0 || message.startsWith(":")) {
+		return null;
+	}
+
+	let id: string | null = null;
+	let event: string | null = null;
+	let data: string | null = null;
+
+	for (const line of message.split("\n")) {
+		if (line.startsWith("id:")) {
+			id = line.slice(3).trimStart();
+			continue;
+		}
+		if (line.startsWith("event:")) {
+			event = line.slice(6).trimStart();
+			continue;
+		}
+		if (line.startsWith("data:")) {
+			data = line.slice(5).trimStart();
+		}
+	}
+
+	return {
+		id,
+		event,
+		data: data === null ? null : JSON.parse(data),
+	};
 }
