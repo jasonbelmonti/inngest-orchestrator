@@ -50,6 +50,7 @@ Error notes:
 
 - malformed JSON request bodies return `400` with `code: "invalid_json_body"`
 - invalid HTTP request shapes return `400` with `code: "invalid_http_input"`
+- mutating requests with a non-JSON content type return `415` with `code: "unsupported_media_type"`
 - `RunLaunchError` responses keep their existing `code` and `issues`
 - `run_store_not_found` returns `404`
 - `run_store_conflict` and `run_store_invalid_transition` return `409`
@@ -59,6 +60,8 @@ Error notes:
 
 Creates a run from the existing launch contract, persists it, then immediately appends
 `run.started`.
+
+The request must use `Content-Type: application/json`.
 
 Request body:
 
@@ -152,6 +155,8 @@ Applies one control action to a persisted run.
 
 Success status: `200`
 
+The request must use `Content-Type: application/json`.
+
 Supported request shapes:
 
 ```json
@@ -197,6 +202,7 @@ Validation notes:
 - `404` unknown route or unknown run id
 - `405` wrong HTTP method for a known route
 - `409` invalid run-store transition or conflict
+- `415` unsupported media type for mutating requests
 - `500` unexpected internal error
 
 ## Current Scope Boundary

@@ -71,6 +71,34 @@ describe("daemon app", () => {
 		});
 	});
 
+	test("POST /runs rejects non-JSON content types before launch mutation", async () => {
+		const harness = await createDaemonTestHarness();
+
+		const response = await harness.app.fetch(
+			new Request("http://daemon.test/runs", {
+				method: "POST",
+				headers: {
+					"content-type": "text/plain",
+					origin: "https://evil.example",
+				},
+				body: JSON.stringify({
+					workflowId: "cross-repo-bugfix",
+					configRoot: harness.configRoot,
+					repoBindings: harness.repoBindings,
+				}),
+			}),
+		);
+
+		expect(response.status).toBe(415);
+		expect(await expectJson(response)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "unsupported_media_type",
+			}),
+		});
+		expect(harness.store.listRuns()).toEqual([]);
+	});
+
 	test("GET /runs returns persisted summaries from SQLite", async () => {
 		const harness = await createDaemonTestHarness();
 
@@ -289,6 +317,42 @@ describe("daemon app", () => {
 			error: expect.objectContaining({
 				code: "invalid_http_input",
 			}),
+		});
+	});
+
+	test("POST /runs/:id/control rejects non-JSON content types before mutation", async () => {
+		const harness = await createDaemonTestHarness();
+
+		await dispatchDaemonRequest(harness.app, "POST", "/runs", {
+			workflowId: "cross-repo-bugfix",
+			configRoot: harness.configRoot,
+			repoBindings: harness.repoBindings,
+		});
+
+		const response = await harness.app.fetch(
+			new Request("http://daemon.test/runs/run-001/control", {
+				method: "POST",
+				headers: {
+					"content-type": "text/plain",
+					origin: "https://evil.example",
+				},
+				body: JSON.stringify({
+					action: "cancel",
+					reason: "evil tab",
+				}),
+			}),
+		);
+
+		expect(response.status).toBe(415);
+		expect(await expectJson(response)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "unsupported_media_type",
+			}),
+		});
+		expect(harness.store.readRun("run-001")).toMatchObject({
+			status: "running",
+			failureMessage: null,
 		});
 	});
 

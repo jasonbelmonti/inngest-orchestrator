@@ -2,6 +2,8 @@ import { DaemonHttpError } from "./errors.ts";
 import type { RunControlRequest } from "./types.ts";
 
 export async function readJsonBody(request: Request) {
+	assertJsonContentType(request);
+
 	try {
 		return await request.json();
 	} catch (error) {
@@ -109,4 +111,24 @@ function parseOptionalStringField(
 	}
 
 	return { [fieldName]: input[fieldName] } as Record<string, string>;
+}
+
+function assertJsonContentType(request: Request) {
+	const contentType = request.headers.get("content-type");
+	if (!contentType) {
+		throw new DaemonHttpError({
+			status: 415,
+			code: "unsupported_media_type",
+			message: 'Mutating requests must use "Content-Type: application/json".',
+		});
+	}
+
+	const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase();
+	if (mediaType !== "application/json") {
+		throw new DaemonHttpError({
+			status: 415,
+			code: "unsupported_media_type",
+			message: 'Mutating requests must use "Content-Type: application/json".',
+		});
+	}
 }
