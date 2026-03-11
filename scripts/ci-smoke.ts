@@ -17,7 +17,7 @@ type CliSuccessResponse = {
 function runCliCommand(args: string[], stdinText?: string): CliRunResult {
 	const proc = Bun.spawnSync({
 		cmd: ["bun", "./src/cli.ts", ...args],
-		stdin: stdinText === undefined ? undefined : new Blob([stdinText]),
+		stdin: stdinText === undefined ? undefined : new TextEncoder().encode(stdinText),
 		stdout: "pipe",
 		stderr: "pipe",
 	});
@@ -67,6 +67,7 @@ function main() {
 	assert(read.exitCode === 0, "workflow read should exit successfully");
 	const readPayload = parseCliOutput(read.stdout, "workflow read");
 	const workflow = (readPayload as { workflow?: Record<string, unknown> }).workflow;
+	const workflowDocument = workflow?.document;
 	assert(
 		readPayload.ok === true &&
 			typeof workflow === "object" &&
@@ -75,12 +76,22 @@ function main() {
 			typeof (workflow as { contentHash?: string }).contentHash === "string",
 		"workflow read should include workflow record with workflowId and contentHash",
 	);
+	assert(
+		workflowDocument !== undefined,
+		"workflow read should return a document field",
+	);
 
 	const validate = runCliCommand(
 		["workflow", "validate", "--config-root", CONFIG_ROOT],
-		JSON.stringify({ document: workflow?.document }),
+		JSON.stringify({ document: workflowDocument }),
 	);
-	assert(validate.exitCode === 0, "workflow validate should exit successfully for known good payload");
+	assert(
+		validate.exitCode === 0,
+		`workflow validate should exit successfully for known good payload: ${JSON.stringify({
+			exitCode: validate.exitCode,
+			stderr: validate.stderr.trim() || "<empty>",
+		})}`,
+	);
 	const validatePayload = parseCliOutput(validate.stdout, "workflow validate");
 	assert(
 		validatePayload.ok === true &&
