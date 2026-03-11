@@ -22,7 +22,6 @@ export class RunEventStreamBroker {
 	}
 
 	openStream(runId: string, signal?: AbortSignal) {
-		const subscriberSet = this.getSubscriberSet(runId);
 		let keepAliveTimer: Timer | null = null;
 		let subscriber: StreamSubscriber | null = null;
 
@@ -33,6 +32,7 @@ export class RunEventStreamBroker {
 					return;
 				}
 
+				const subscriberSet = this.getSubscriberSet(runId);
 				subscriber = {
 					enqueue: (chunk) => controller.enqueue(chunk),
 					close: () => {

@@ -9,6 +9,7 @@ import type {
 
 test("handleRunControl publishes only the event appended by its own mutation", async () => {
 	const publishedEvents: StoredRunEvent[][] = [];
+	const readEvents: number[] = [];
 
 	const store = {
 		appendEvent: () =>
@@ -16,21 +17,18 @@ test("handleRunControl publishes only the event appended by its own mutation", a
 				runId: "run-001",
 				latestEventSequence: 5,
 			}) as RunProjectionRecord,
-		listEvents: () =>
-			[
-				makeStoredEvent(1, "run.created"),
-				makeStoredEvent(2, "run.started"),
-				makeStoredEvent(3, "step.started"),
-				makeStoredEvent(4, "approval.requested"),
-				makeStoredEvent(5, "run.cancelled"),
-			] satisfies StoredRunEvent[],
+		readEvent: ({ sequence }: { runId: string; sequence: number }) => {
+			readEvents.push(sequence);
+			return makeStoredEvent(sequence, "run.cancelled");
+		},
 	} as unknown as SQLiteRunStore;
 
 	const eventStreamBroker = {
+		subscriberCount: () => 1,
 		publish: (_runId: string, events: StoredRunEvent[]) => {
 			publishedEvents.push(events);
 		},
-	} as RunEventStreamBroker;
+	} as unknown as RunEventStreamBroker;
 
 	const response = await handleRunControl(
 		new Request("http://daemon.test/runs/run-001/control", {
@@ -51,6 +49,7 @@ test("handleRunControl publishes only the event appended by its own mutation", a
 	);
 
 	expect(response.status).toBe(200);
+	expect(readEvents).toEqual([5]);
 	expect(publishedEvents).toEqual([
 		[
 			expect.objectContaining({
@@ -60,6 +59,50 @@ test("handleRunControl publishes only the event appended by its own mutation", a
 			}),
 		],
 	]);
+});
+
+test("handleRunControl skips persisted event lookup when there are no subscribers", async () => {
+	let readEventCalls = 0;
+
+	const store = {
+		appendEvent: () =>
+			({
+				runId: "run-001",
+				latestEventSequence: 5,
+			}) as RunProjectionRecord,
+		readEvent: () => {
+			readEventCalls += 1;
+			return makeStoredEvent(5, "run.cancelled");
+		},
+	} as unknown as SQLiteRunStore;
+
+	const eventStreamBroker = {
+		subscriberCount: () => 0,
+		publish: () => {
+			throw new Error("publish should not be called without subscribers");
+		},
+	} as unknown as RunEventStreamBroker;
+
+	const response = await handleRunControl(
+		new Request("http://daemon.test/runs/run-001/control", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				action: "cancel",
+				reason: "operator stopped run",
+			}),
+		}),
+		"run-001",
+		{
+			store,
+			eventStreamBroker,
+			generateRunId: () => "unused",
+			now: () => "2026-03-11T12:00:00.000Z",
+		},
+	);
+
+	expect(response.status).toBe(200);
+	expect(readEventCalls).toBe(0);
 });
 
 function makeStoredEvent(
@@ -73,31 +116,6 @@ function makeStoredEvent(
 	};
 
 	switch (type) {
-		case "run.created":
-			return {
-				...base,
-				type,
-				launch: {} as RunProjectionRecord["launch"],
-			};
-		case "run.started":
-		case "run.completed":
-			return {
-				...base,
-				type,
-			};
-		case "step.started":
-			return {
-				...base,
-				type,
-				stepId: "implement",
-			};
-		case "approval.requested":
-			return {
-				...base,
-				type,
-				approvalId: "approval-001",
-				stepId: "implement",
-			};
 		case "run.cancelled":
 			return {
 				...base,

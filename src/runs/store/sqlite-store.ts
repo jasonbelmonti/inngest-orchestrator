@@ -10,6 +10,7 @@ import {
 	insertRunEvent,
 	listRunProjections,
 	listStoredRunEvents,
+	readStoredRunEvent,
 	readAllStoredRunEvents,
 	readRunEventCursor,
 	readRunProjection,
@@ -129,6 +130,10 @@ export class SQLiteRunStore {
 
 	listEvents(runId: string) {
 		return listStoredRunEvents(this.database, runId);
+	}
+
+	readEvent(input: { runId: string; sequence: number }) {
+		return readStoredRunEvent(this.database, input);
 	}
 
 	readCursor(runId: string) {

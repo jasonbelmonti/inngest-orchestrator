@@ -103,10 +103,13 @@ function publishEventSequences(
 	runId: string,
 	sequences: number[],
 ) {
-	const sequenceSet = new Set(sequences);
-	const events = store
-		.listEvents(runId)
-		.filter((event) => sequenceSet.has(event.sequence));
+	if (eventStreamBroker.subscriberCount(runId) === 0) {
+		return;
+	}
+
+	const events = sequences
+		.map((sequence) => store.readEvent({ runId, sequence }))
+		.filter((event) => event !== null);
 	if (events.length === 0) {
 		return;
 	}
