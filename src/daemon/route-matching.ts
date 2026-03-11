@@ -1,3 +1,5 @@
+import { DaemonHttpError } from "./errors.ts";
+
 export type DaemonRouteMatch =
 	| { kind: "runs" }
 	| { kind: "run-detail"; runId: string }
@@ -5,7 +7,7 @@ export type DaemonRouteMatch =
 	| { kind: "not-found"; pathname: string };
 
 export function matchDaemonRoute(pathname: string): DaemonRouteMatch {
-	const segments = pathname.split("/").filter(Boolean).map(decodeURIComponent);
+	const segments = pathname.split("/").filter(Boolean).map(decodePathSegment);
 	const runId = segments[1];
 
 	if (segments.length === 1 && segments[0] === "runs") {
@@ -26,4 +28,17 @@ export function matchDaemonRoute(pathname: string): DaemonRouteMatch {
 	}
 
 	return { kind: "not-found", pathname };
+}
+
+function decodePathSegment(input: string) {
+	try {
+		return decodeURIComponent(input);
+	} catch (error) {
+		throw new DaemonHttpError({
+			status: 400,
+			code: "invalid_http_input",
+			message: "Request path contains invalid percent-encoding.",
+			cause: error,
+		});
+	}
 }

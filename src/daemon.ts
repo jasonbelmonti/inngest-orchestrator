@@ -14,6 +14,7 @@ const app = createDaemonApp({ store });
 const server = Bun.serve({
 	hostname: config.host,
 	port: config.port,
+	idleTimeout: config.idleTimeoutSeconds,
 	fetch: app.fetch,
 });
 
@@ -27,17 +28,30 @@ function registerShutdownHandler(
 	daemon: ReturnType<typeof Bun.serve>,
 	runStore: SQLiteRunStore,
 ) {
-	let closed = false;
+	let shutdownPromise: Promise<void> | null = null;
 
-	const close = () => {
-		if (closed) {
+	const close = async () => {
+		if (shutdownPromise) {
+			await shutdownPromise;
 			return;
 		}
-		closed = true;
-		daemon.stop(true);
-		runStore.close();
+
+		shutdownPromise = daemon
+			.stop()
+			.catch((error) => {
+				console.error("Failed to stop daemon cleanly.", error);
+			})
+			.finally(() => {
+				runStore.close();
+			});
+
+		await shutdownPromise;
 	};
 
-	process.on("SIGINT", close);
-	process.on("SIGTERM", close);
+	process.on("SIGINT", () => {
+		void close();
+	});
+	process.on("SIGTERM", () => {
+		void close();
+	});
 }

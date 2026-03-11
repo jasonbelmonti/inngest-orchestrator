@@ -48,6 +48,36 @@ describe("SQLiteRunStore", () => {
 		store.close();
 	});
 
+	test("creates and starts a run atomically", () => {
+		const store = SQLiteRunStore.open();
+
+		const result = store.createStartedRun({
+			runId: "run-001a",
+			createdAt: "2026-03-10T10:00:00.000Z",
+			startedAt: "2026-03-10T10:00:01.000Z",
+			launch: makeResolvedLaunchRequest(),
+		});
+
+		expect(result).toMatchObject({
+			runId: "run-001a",
+			status: "running",
+			latestEventSequence: 2,
+			startedAt: "2026-03-10T10:00:01.000Z",
+		});
+		expect(store.listEvents("run-001a")).toEqual([
+			expect.objectContaining({
+				sequence: 1,
+				type: "run.created",
+			}),
+			expect.objectContaining({
+				sequence: 2,
+				type: "run.started",
+			}),
+		]);
+
+		store.close();
+	});
+
 	test("updates projections deterministically as events are appended", () => {
 		const store = SQLiteRunStore.open();
 

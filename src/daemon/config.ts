@@ -4,10 +4,12 @@ export interface DaemonRuntimeConfig {
 	host: string;
 	port: number;
 	databasePath: string;
+	idleTimeoutSeconds: number;
 }
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3017;
+const DEFAULT_IDLE_TIMEOUT_SECONDS = 120;
 const DEFAULT_DATABASE_PATH = resolve(
 	import.meta.dir,
 	"../../.local/inngest-orchestrator.sqlite",
@@ -20,6 +22,7 @@ export function resolveDaemonRuntimeConfig(
 		host: env.INGGEST_ORCHESTRATOR_HOST || DEFAULT_HOST,
 		port: parsePort(env.INGGEST_ORCHESTRATOR_PORT),
 		databasePath: env.INGGEST_ORCHESTRATOR_DB_PATH || DEFAULT_DATABASE_PATH,
+		idleTimeoutSeconds: DEFAULT_IDLE_TIMEOUT_SECONDS,
 	};
 }
 

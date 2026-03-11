@@ -249,6 +249,25 @@ describe("daemon app", () => {
 		});
 	});
 
+	test("returns structured JSON for malformed percent-encoded paths", async () => {
+		const harness = await createDaemonTestHarness();
+
+		const response = await harness.app.fetch(
+			new Request("http://daemon.test/runs/%E0%A4%A/control", {
+				method: "POST",
+			}),
+		);
+
+		expect(response.status).toBe(400);
+		expect(await expectJson(response)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "invalid_http_input",
+				message: "Request path contains invalid percent-encoding.",
+			}),
+		});
+	});
+
 	test("POST /runs/:id/control returns 409 for invalid transitions", async () => {
 		const harness = await createDaemonTestHarness();
 

@@ -7,13 +7,14 @@ import {
 	type DaemonHandlerOptions,
 } from "./handlers.ts";
 import { matchDaemonRoute } from "./route-matching.ts";
-import { errorResponse, successResponse } from "./responses.ts";
+import { errorResponse } from "./responses.ts";
 
 export function createDaemonFetchHandler(options: DaemonHandlerOptions) {
 	return async function fetch(request: Request) {
-		const route = matchDaemonRoute(new URL(request.url).pathname);
+		const pathname = new URL(request.url).pathname;
 
 		try {
+			const route = matchDaemonRoute(pathname);
 			switch (route.kind) {
 				case "runs":
 					if (request.method === "GET") {
@@ -56,11 +57,22 @@ export function createDaemonFetchHandler(options: DaemonHandlerOptions) {
 		} catch (error) {
 			return errorResponse(
 				toDaemonHttpError(error, {
-					...(route.kind === "run-detail" || route.kind === "run-control"
-						? { runId: route.runId }
+					...(deriveRunIdFromPath(pathname)
+						? { runId: deriveRunIdFromPath(pathname) }
 						: {}),
 				}),
 			);
 		}
 	};
+}
+
+function deriveRunIdFromPath(pathname: string) {
+	try {
+		const route = matchDaemonRoute(pathname);
+		return route.kind === "run-detail" || route.kind === "run-control"
+			? route.runId
+			: undefined;
+	} catch {
+		return undefined;
+	}
 }

@@ -21,17 +21,11 @@ export async function handleCreateRun(
 	const runId = options.generateRunId();
 	const occurredAt = options.now();
 
-	options.store.createRun({
+	const run = options.store.createStartedRun({
 		runId,
 		createdAt: occurredAt,
+		startedAt: occurredAt,
 		launch,
-	});
-	const run = options.store.appendEvent({
-		runId,
-		event: {
-			type: "run.started",
-			occurredAt,
-		},
 	});
 
 	return successResponse(201, { run });
