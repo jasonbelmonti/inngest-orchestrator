@@ -563,6 +563,73 @@ describe("daemon app", () => {
 		});
 	});
 
+	test("POST /runs/:id/control rejects oversized control text fields", async () => {
+		const harness = await createDaemonTestHarness();
+		await seedActiveStepRun(harness, "run-oversized-text");
+		const oversizedText = "x".repeat(70_000);
+
+		const cancelResponse = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-oversized-text/control",
+			{
+				action: "cancel",
+				reason: oversizedText,
+			},
+		);
+
+		expect(cancelResponse.status).toBe(400);
+		expect(await expectJson(cancelResponse)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "invalid_http_input",
+				message: '"reason" must be at most 65536 UTF-8 bytes.',
+			}),
+		});
+
+		const requestApprovalResponse = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-oversized-text/control",
+			{
+				action: "request_approval",
+				approvalId: "approval-oversized",
+				stepId: "implement",
+				message: oversizedText,
+			},
+		);
+
+		expect(requestApprovalResponse.status).toBe(400);
+		expect(await expectJson(requestApprovalResponse)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "invalid_http_input",
+				message: '"message" must be at most 65536 UTF-8 bytes.',
+			}),
+		});
+
+		const resolveApprovalResponse = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-oversized-text/control",
+			{
+				action: "resolve_approval",
+				approvalId: "approval-oversized",
+				decision: "approved",
+				comment: oversizedText,
+			},
+		);
+
+		expect(resolveApprovalResponse.status).toBe(400);
+		expect(await expectJson(resolveApprovalResponse)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "invalid_http_input",
+				message: '"comment" must be at most 65536 UTF-8 bytes.',
+			}),
+		});
+	});
+
 	test("POST /runs/:id/control rejects whitespace-only identifiers", async () => {
 		const harness = await createDaemonTestHarness();
 		await seedActiveStepRun(harness, "run-invalid-identifiers");

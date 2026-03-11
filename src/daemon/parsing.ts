@@ -1,6 +1,9 @@
 import { DaemonHttpError } from "./errors.ts";
 import type { RunControlRequest } from "./types.ts";
 
+const MAX_CONTROL_TEXT_BYTES = 64 * 1024;
+const textEncoder = new TextEncoder();
+
 export async function readJsonBody(request: Request) {
 	assertJsonContentType(request);
 
@@ -110,7 +113,21 @@ function parseOptionalStringField(
 		throw invalidControlRequest(message);
 	}
 
+	assertMaxUtf8Bytes(input[fieldName], fieldName, MAX_CONTROL_TEXT_BYTES);
+
 	return { [fieldName]: input[fieldName] } as Record<string, string>;
+}
+
+function assertMaxUtf8Bytes(
+	value: string,
+	fieldName: string,
+	maxBytes: number,
+) {
+	if (textEncoder.encode(value).byteLength > maxBytes) {
+		throw invalidControlRequest(
+			`"${fieldName}" must be at most ${maxBytes} UTF-8 bytes.`,
+		);
+	}
 }
 
 function assertJsonContentType(request: Request) {
