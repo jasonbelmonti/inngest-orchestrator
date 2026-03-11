@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 
+import { runCli } from "../src/cli/app.ts";
+
 const CONFIG_ROOT = "./examples/config-root";
 const MISSING_CONFIG_ROOT = "./examples/config-root-does-not-exist";
 
@@ -14,19 +16,13 @@ type CliSuccessResponse = {
 	[key: string]: unknown;
 };
 
-function runCliCommand(args: string[], stdinText?: string): CliRunResult {
-	const proc = Bun.spawnSync({
-		cmd: ["bun", "./src/cli.ts", ...args],
-		stdin: stdinText === undefined ? undefined : new TextEncoder().encode(stdinText),
-		stdout: "pipe",
-		stderr: "pipe",
+async function runCliCommand(
+	args: string[],
+	stdinText?: string,
+): Promise<CliRunResult> {
+	return runCli(args, {
+		stdinText,
 	});
-
-	return {
-		exitCode: proc.exitCode,
-		stdout: proc.stdout ? new TextDecoder().decode(proc.stdout) : "",
-		stderr: proc.stderr ? new TextDecoder().decode(proc.stderr) : "",
-	};
 }
 
 function parseCliOutput(raw: string, command: string) {
@@ -47,8 +43,8 @@ function assert(condition: unknown, message: string) {
 	}
 }
 
-function main() {
-	const list = runCliCommand(["workflow", "list", "--config-root", CONFIG_ROOT]);
+async function main() {
+	const list = await runCliCommand(["workflow", "list", "--config-root", CONFIG_ROOT]);
 	assert(list.exitCode === 0, "workflow list should exit successfully");
 	const listPayload = parseCliOutput(list.stdout, "workflow list");
 	assert(
@@ -57,7 +53,7 @@ function main() {
 		"workflow list should return ok=true and workflow array",
 	);
 
-	const read = runCliCommand([
+	const read = await runCliCommand([
 		"workflow",
 		"read",
 		"cross-repo-bugfix",
@@ -81,7 +77,7 @@ function main() {
 		"workflow read should return a document field",
 	);
 
-	const validate = runCliCommand(
+	const validate = await runCliCommand(
 		["workflow", "validate", "--config-root", CONFIG_ROOT],
 		JSON.stringify({ document: workflowDocument }),
 	);
@@ -99,7 +95,7 @@ function main() {
 		"workflow validate should return validation output",
 	);
 
-	const save = runCliCommand(
+	const save = await runCliCommand(
 		["workflow", "save", "--config-root", CONFIG_ROOT],
 		JSON.stringify({
 			document: workflow?.document,
@@ -115,7 +111,7 @@ function main() {
 		"workflow save should include save result",
 	);
 
-	const invalidValidate = runCliCommand(
+	const invalidValidate = await runCliCommand(
 		["workflow", "validate", "--config-root", CONFIG_ROOT],
 		"{",
 	);
@@ -131,7 +127,7 @@ function main() {
 		"workflow validate failure should return structured error response",
 	);
 
-	const invalidSave = runCliCommand(
+	const invalidSave = await runCliCommand(
 		["workflow", "save", "--config-root", CONFIG_ROOT],
 		JSON.stringify({}),
 	);
@@ -144,7 +140,7 @@ function main() {
 		"workflow save failure should return structured error response",
 	);
 
-	const missingConfig = runCliCommand([
+	const missingConfig = await runCliCommand([
 		"workflow",
 		"list",
 		"--config-root",
