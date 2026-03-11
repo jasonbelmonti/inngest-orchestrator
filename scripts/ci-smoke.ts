@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-import { spawnSync } from "node:child_process";
 
 const CONFIG_ROOT = "./examples/config-root";
 const MISSING_CONFIG_ROOT = "./examples/config-root-does-not-exist";
@@ -16,16 +15,17 @@ type CliSuccessResponse = {
 };
 
 function runCliCommand(args: string[], stdinText?: string): CliRunResult {
-	const proc = spawnSync("bun", ["./src/cli.ts", ...args], {
-		encoding: "utf8",
-		input: stdinText,
-		shell: false,
+	const proc = Bun.spawnSync({
+		cmd: ["bun", "./src/cli.ts", ...args],
+		stdin: stdinText === undefined ? undefined : new Blob([stdinText]),
+		stdout: "pipe",
+		stderr: "pipe",
 	});
 
 	return {
-		exitCode: proc.status ?? 0,
-		stdout: typeof proc.stdout === "string" ? proc.stdout : "",
-		stderr: typeof proc.stderr === "string" ? proc.stderr : "",
+		exitCode: proc.exitCode,
+		stdout: proc.stdout ? new TextDecoder().decode(proc.stdout) : "",
+		stderr: proc.stderr ? new TextDecoder().decode(proc.stderr) : "",
 	};
 }
 
