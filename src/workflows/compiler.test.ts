@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { compileWorkflowDocument } from "./compiler.ts";
 import { WorkflowStore } from "./store.ts";
-import { EXAMPLE_CONFIG_ROOT, makeRepositoryCatalog, makeWorkflow } from "./test-fixtures.ts";
+import {
+	EXAMPLE_CONFIG_ROOT,
+	makeRepositoryCatalog,
+	makeWorkflow,
+} from "./test-fixtures.ts";
 import type { WorkflowDocument } from "./types.ts";
 
 describe("compileWorkflowDocument", () => {
@@ -16,8 +20,9 @@ describe("compileWorkflowDocument", () => {
 
 		expect(compiled.workflowId).toBe("cross-repo-bugfix");
 		expect(
-			compiled.repositories.find((repository) => repository.id === "agent-console")
-				?.label,
+			compiled.repositories.find(
+				(repository) => repository.id === "agent-console",
+			)?.label,
 		).toBe("Agent Console");
 		expect(
 			compiled.nodes.find((node) => node.id === "implement"),
@@ -64,9 +69,9 @@ describe("compileWorkflowDocument", () => {
 				code: "invalid_executable_workflow",
 				issues: expect.arrayContaining([
 					expect.objectContaining({ code: "unsupported_template" }),
-					]),
-				}),
-			);
+				]),
+			}),
+		);
 	});
 
 	test("rejects fan-out and merge shapes with machine-readable issue codes", () => {
@@ -124,7 +129,7 @@ describe("compileWorkflowDocument", () => {
 		);
 	});
 
-		test("rejects cycles and unreachable nodes with machine-readable issue codes", () => {
+	test("rejects cycles and unreachable nodes with machine-readable issue codes", () => {
 		const baseWorkflow = makeWorkflow();
 		const [firstBaseEdge, secondBaseEdge] = baseWorkflow.edges;
 		if (!firstBaseEdge || !secondBaseEdge) {
@@ -147,8 +152,8 @@ describe("compileWorkflowDocument", () => {
 				},
 			],
 			edges: [
-					firstBaseEdge,
-					secondBaseEdge,
+				firstBaseEdge,
+				secondBaseEdge,
 				{
 					id: "edge-typecheck-implement-cycle",
 					sourceId: "typecheck",
@@ -170,8 +175,8 @@ describe("compileWorkflowDocument", () => {
 					expect.objectContaining({ code: "cycle_detected" }),
 					expect.objectContaining({ code: "unreachable_node" }),
 				]),
-				}),
-			);
+			}),
+		);
 	});
 
 	test("rejects step nodes that do not define a success transition", () => {

@@ -29,7 +29,11 @@ export function parseWorkflowRepositoryCatalog(
 	const repositoriesValue = root?.repositories;
 	const repositories = Array.isArray(repositoriesValue)
 		? repositoriesValue
-		: pushInvalidShape(issues, "$.repositories", "repositories must be an array.");
+		: pushInvalidShape(
+				issues,
+				"$.repositories",
+				"repositories must be an array.",
+			);
 
 	const parsedRepositories: WorkflowRepositoryCatalogEntry[] = [];
 	if (Array.isArray(repositories)) {

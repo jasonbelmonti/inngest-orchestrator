@@ -2,7 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { saveWorkflowDocument, validateWorkflowDocumentInput } from "./authoring.ts";
+import {
+	saveWorkflowDocument,
+	validateWorkflowDocumentInput,
+} from "./authoring.ts";
 import { serializeWorkflowRepositoryCatalog } from "./serialization.ts";
 import { WorkflowStore } from "./store.ts";
 import { makeRepositoryCatalog, makeWorkflow } from "./test-fixtures.ts";
@@ -125,7 +128,10 @@ describe("workflow authoring", () => {
 	test("saves workflows even when another file in the config root is invalid", async () => {
 		const configRoot = await createTempConfigRoot();
 		const store = await WorkflowStore.open({ configRoot });
-		await Bun.write(join(configRoot, "workflows", "broken.json"), "{ invalid json\n");
+		await Bun.write(
+			join(configRoot, "workflows", "broken.json"),
+			"{ invalid json\n",
+		);
 
 		const save = await saveWorkflowDocument({
 			store,
@@ -175,7 +181,12 @@ describe("workflow authoring", () => {
 						workflowId: "ship-feature",
 						name: "Ship Feature",
 					}),
-					filePath: join(configRoot, "workflows", "nested", "ship-feature.json"),
+					filePath: join(
+						configRoot,
+						"workflows",
+						"nested",
+						"ship-feature.json",
+					),
 				},
 			}),
 		).rejects.toMatchObject({

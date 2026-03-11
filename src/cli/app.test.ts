@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runCli } from "./app.ts";
 import { serializeWorkflowRepositoryCatalog } from "../workflows/serialization.ts";
-import { makeRepositoryCatalog, makeWorkflow } from "../workflows/test-fixtures.ts";
+import {
+	makeRepositoryCatalog,
+	makeWorkflow,
+} from "../workflows/test-fixtures.ts";
 
 const tempConfigRoots: string[] = [];
 
@@ -138,7 +141,9 @@ describe("workflow CLI", () => {
 			error: expect.objectContaining({ code: "invalid_cli_input" }),
 		});
 		expect(
-			await Bun.file(join(configRoot, "workflows", "ship-feature.json")).exists(),
+			await Bun.file(
+				join(configRoot, "workflows", "ship-feature.json"),
+			).exists(),
 		).toBe(false);
 	});
 
@@ -186,7 +191,12 @@ describe("workflow CLI", () => {
 
 	test("rejects missing stdin when workflow save is otherwise valid", async () => {
 		const configRoot = await createTempConfigRoot();
-		const result = await runCli(["workflow", "save", "--config-root", configRoot]);
+		const result = await runCli([
+			"workflow",
+			"save",
+			"--config-root",
+			configRoot,
+		]);
 
 		expect(result.exitCode).toBe(1);
 		expect(JSON.parse(result.stderr)).toMatchObject({
@@ -239,13 +249,16 @@ describe("workflow CLI", () => {
 		let readAttempts = 0;
 		const configRoot = await createTempConfigRoot();
 
-		const result = await runCli(["workflow", "save", "--config-root", configRoot], {
-			stdinIsTTY: true,
-			readStdinText: async () => {
-				readAttempts += 1;
-				return JSON.stringify({ document: makeWorkflow() });
+		const result = await runCli(
+			["workflow", "save", "--config-root", configRoot],
+			{
+				stdinIsTTY: true,
+				readStdinText: async () => {
+					readAttempts += 1;
+					return JSON.stringify({ document: makeWorkflow() });
+				},
 			},
-		});
+		);
 
 		expect(readAttempts).toBe(0);
 		expect(result.exitCode).toBe(1);

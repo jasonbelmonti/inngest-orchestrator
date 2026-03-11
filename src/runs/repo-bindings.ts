@@ -163,8 +163,7 @@ function toRunLaunchError(
 
 	if (
 		error.code === "invalid_workflow_document" ||
-		(error.code === "invalid_json" &&
-			isWorkflowFileError(error))
+		(error.code === "invalid_json" && isWorkflowFileError(error))
 	) {
 		return new RunLaunchError({
 			code: "invalid_run_launch_input",

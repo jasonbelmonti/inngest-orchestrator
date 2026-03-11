@@ -15,7 +15,10 @@ describe("CLI entrypoint", () => {
 		});
 
 		const exit = await Promise.race([
-			process.exited.then((exitCode) => ({ timedOut: false as const, exitCode })),
+			process.exited.then((exitCode) => ({
+				timedOut: false as const,
+				exitCode,
+			})),
 			Bun.sleep(250).then(() => ({ timedOut: true as const, exitCode: -1 })),
 		]);
 
@@ -40,7 +43,10 @@ describe("CLI entrypoint", () => {
 		});
 
 		const exit = await Promise.race([
-			process.exited.then((exitCode) => ({ timedOut: false as const, exitCode })),
+			process.exited.then((exitCode) => ({
+				timedOut: false as const,
+				exitCode,
+			})),
 			Bun.sleep(250).then(() => ({ timedOut: true as const, exitCode: -1 })),
 		]);
 

@@ -35,7 +35,9 @@ export async function executePreparedWorkflowCommand(
 	preparation: PreparedWorkflowCommand,
 	stdinText: string | undefined,
 ): Promise<WorkflowCliResponse> {
-	const store = await WorkflowStore.open({ configRoot: preparation.configRoot });
+	const store = await WorkflowStore.open({
+		configRoot: preparation.configRoot,
+	});
 
 	switch (preparation.subcommand) {
 		case "list":
@@ -62,7 +64,8 @@ export async function executePreparedWorkflowCommand(
 				throw new CliError({
 					code: "invalid_cli_input",
 					command: "workflow.validate",
-					message: "workflow validate expects a JSON object with a document field on stdin.",
+					message:
+						"workflow validate expects a JSON object with a document field on stdin.",
 				});
 			}
 			const validation = await validateWorkflowDocumentInput({
@@ -90,21 +93,22 @@ export async function executePreparedWorkflowCommand(
 				throw new CliError({
 					code: "invalid_cli_input",
 					command: "workflow.save",
-					message: "workflow save expects a JSON object with a document field on stdin.",
+					message:
+						"workflow save expects a JSON object with a document field on stdin.",
 				});
-				}
-				const save = await saveWorkflowDocument({
-					store,
-					options: {
-						document: envelope.document,
-						expectedContentHash: envelope.expectedContentHash ?? null,
-						filePath: parseOptionalStringInput(
-							envelope.filePath,
-							"filePath",
-							"workflow.save",
-						),
-					},
-				});
+			}
+			const save = await saveWorkflowDocument({
+				store,
+				options: {
+					document: envelope.document,
+					expectedContentHash: envelope.expectedContentHash ?? null,
+					filePath: parseOptionalStringInput(
+						envelope.filePath,
+						"filePath",
+						"workflow.save",
+					),
+				},
+			});
 			return {
 				ok: true,
 				command: "workflow.save",
@@ -114,8 +118,8 @@ export async function executePreparedWorkflowCommand(
 					compiled: save.compiled,
 					workflow: save.workflow,
 				},
-				};
-			}
+			};
+		}
 	}
 }
 
@@ -146,7 +150,9 @@ type PreparedWorkflowCommand =
 			requiresStdin: true;
 	  };
 
-export function prepareWorkflowCommandArgs(args: string[]): PreparedWorkflowCommand {
+export function prepareWorkflowCommandArgs(
+	args: string[],
+): PreparedWorkflowCommand {
 	const [subcommand, ...rawArgs] = args;
 	assertKnownWorkflowSubcommand(subcommand);
 	const { configRoot, positional } = parseWorkflowOptions(rawArgs);
@@ -177,7 +183,9 @@ export function toWorkflowCliErrorResponse(
 	if (error instanceof CliError) {
 		return {
 			ok: false,
-			...(error.command ? { command: error.command as WorkflowCliCommand } : {}),
+			...(error.command
+				? { command: error.command as WorkflowCliCommand }
+				: {}),
 			error: {
 				code: error.code,
 				message: error.message,
@@ -208,7 +216,7 @@ function prepareWorkflowCommand(input: {
 				configRoot: input.configRoot,
 				requiresStdin: false,
 			};
-		case "read":
+		case "read": {
 			if (input.positional.length !== 1) {
 				throw new CliError({
 					code: "invalid_cli_arguments",
@@ -231,6 +239,7 @@ function prepareWorkflowCommand(input: {
 				requiresStdin: false,
 				workflowId,
 			};
+		}
 		case "validate":
 			assertNoPositionalArgs(input.positional, "workflow.validate");
 			return {
@@ -289,7 +298,10 @@ function parseWorkflowOptions(args: string[]) {
 	return { configRoot, positional };
 }
 
-function parseJsonEnvelope<T>(stdinText: string | undefined, command: WorkflowCliCommand): T {
+function parseJsonEnvelope<T>(
+	stdinText: string | undefined,
+	command: WorkflowCliCommand,
+): T {
 	if (!stdinText || stdinText.trim().length === 0) {
 		throw new CliError({
 			code: "invalid_cli_input",
@@ -333,7 +345,10 @@ function parseOptionalStringInput(
 	});
 }
 
-function assertNoPositionalArgs(positional: string[], command: WorkflowCliCommand) {
+function assertNoPositionalArgs(
+	positional: string[],
+	command: WorkflowCliCommand,
+) {
 	if (positional.length === 0) {
 		return;
 	}

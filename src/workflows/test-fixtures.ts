@@ -1,7 +1,10 @@
 import { resolve } from "node:path";
 import type { WorkflowDocument, WorkflowRepositoryCatalog } from "./types.ts";
 
-export const EXAMPLE_CONFIG_ROOT = resolve(import.meta.dir, "../../examples/config-root");
+export const EXAMPLE_CONFIG_ROOT = resolve(
+	import.meta.dir,
+	"../../examples/config-root",
+);
 
 export function makeRepositoryCatalog(): WorkflowRepositoryCatalog {
 	return {
