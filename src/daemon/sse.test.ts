@@ -37,25 +37,24 @@ test("aborting an active stream removes the subscriber and closes the stream", a
 	expect(getSubscriberBuckets(broker).has("run-live")).toBe(false);
 });
 
-test("slow subscribers are dropped once the buffered queue limit is exceeded", async () => {
+test("oversized first frames are delivered before slow subscribers are dropped", async () => {
 	const broker = new RunEventStreamBroker({
 		keepAliveMs: 60_000,
-		maxBufferedBytes: 512,
+		maxBufferedBytes: 256,
 	});
 	const response = broker.openStream("run-slow");
 	const reader = response.body?.getReader();
 
 	expect(broker.subscriberCount("run-slow")).toBe(1);
 
-	broker.publish("run-slow", [
-		makeStoredEvent(1, "x".repeat(120)),
-		makeStoredEvent(2, "y".repeat(120)),
-	]);
+	broker.publish("run-slow", [makeStoredEvent(1, "x".repeat(120))]);
+	broker.publish("run-slow", [makeStoredEvent(2, "z")]);
 
 	expect(broker.subscriberCount("run-slow")).toBe(0);
 	expect(getSubscriberBuckets(broker).has("run-slow")).toBe(false);
 	await expect(reader?.read()).resolves.toMatchObject({
 		done: false,
+		value: expect.any(Uint8Array),
 	});
 	await expect(reader?.read()).resolves.toEqual({
 		done: true,

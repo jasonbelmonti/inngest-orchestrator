@@ -42,7 +42,7 @@ export class RunEventStreamBroker {
 					subscriber = {
 						enqueue: (chunk) => {
 							const desiredSize = controller.desiredSize;
-							if (desiredSize === null || desiredSize < chunk.byteLength) {
+							if (desiredSize === null || desiredSize <= 0) {
 								subscriber?.close();
 								this.unsubscribe(runId, subscriber, keepAliveTimer);
 								return false;
