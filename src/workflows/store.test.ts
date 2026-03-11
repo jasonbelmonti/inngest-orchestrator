@@ -8,8 +8,16 @@ import {
 	serializeWorkflowRepositoryCatalog,
 } from "./serialization.ts";
 import { WorkflowStore } from "./store.ts";
-import { EXAMPLE_CONFIG_ROOT, makeRepositoryCatalog, makeWorkflow } from "./test-fixtures.ts";
-import type { WorkflowDocument, WorkflowRepositoryCatalog, WorkflowSummary } from "./types.ts";
+import {
+	EXAMPLE_CONFIG_ROOT,
+	makeRepositoryCatalog,
+	makeWorkflow,
+} from "./test-fixtures.ts";
+import type {
+	WorkflowDocument,
+	WorkflowRepositoryCatalog,
+	WorkflowSummary,
+} from "./types.ts";
 import { parseWorkflowDocument } from "./validation.ts";
 const tempConfigRoots: string[] = [];
 
@@ -69,20 +77,35 @@ describe("WorkflowStore", () => {
 	test("rejects duplicate node ids with machine-readable issue codes", async () => {
 		const configRoot = await createTempConfigRoot({
 			workflows: {
-				duplicate: makeWorkflow({
-					nodes: [
-						makeWorkflow().nodes[0]!,
-						{
-							...makeWorkflow().nodes[1]!,
-							id: "duplicate",
-						},
-						{
-							...makeWorkflow().nodes[2]!,
-							id: "duplicate",
-						},
-						makeWorkflow().nodes[3]!,
-					],
-				}),
+				duplicate: (() => {
+					const baseWorkflowNodes = makeWorkflow().nodes;
+					if (
+						baseWorkflowNodes.length < 4 ||
+						baseWorkflowNodes[0] === undefined ||
+						baseWorkflowNodes[1] === undefined ||
+						baseWorkflowNodes[2] === undefined ||
+						baseWorkflowNodes[3] === undefined
+					) {
+						throw new Error("Invalid base workflow fixture.");
+					}
+
+					const [triggerNode, implementNode, typecheckNode, terminalNode] =
+						baseWorkflowNodes;
+					return {
+						nodes: [
+							triggerNode,
+							{
+								...implementNode,
+								id: "duplicate",
+							},
+							{
+								...typecheckNode,
+								id: "duplicate",
+							},
+							terminalNode,
+						],
+					};
+				})(),
 			},
 		});
 
@@ -141,7 +164,7 @@ describe("WorkflowStore", () => {
 			issues: expect.arrayContaining([
 				expect.objectContaining({ code: "missing_repo_target" }),
 			]),
-			});
+		});
 	});
 
 	test("rejects repo targets on nodes that are not repo-scoped", async () => {
@@ -185,14 +208,16 @@ describe("WorkflowStore", () => {
 								prompt: "Patch the bug and summarize the diff.",
 								template: "task.agent",
 							},
-					  }
+						}
 					: node,
 			),
 			phases: left.phases,
 			repositories: left.repositories,
 		};
 
-		expect(serializeWorkflowDocument(left)).toBe(serializeWorkflowDocument(right));
+		expect(serializeWorkflowDocument(left)).toBe(
+			serializeWorkflowDocument(right),
+		);
 		expect(hashWorkflowDocument(left)).toBe(hashWorkflowDocument(right));
 	});
 });
@@ -225,10 +250,9 @@ async function createTempConfigRoot(input: {
 	);
 
 	for (const [fileName, workflow] of Object.entries(input.workflows)) {
-		const fileContents =
-			isWorkflowDocument(workflow)
-				? serializeWorkflowDocument(workflow)
-				: `${JSON.stringify(workflow, null, 2)}\n`;
+		const fileContents = isWorkflowDocument(workflow)
+			? serializeWorkflowDocument(workflow)
+			: `${JSON.stringify(workflow, null, 2)}\n`;
 		await Bun.write(join(workflowsDirectory, `${fileName}.json`), fileContents);
 	}
 

@@ -1,4 +1,8 @@
-import { WorkflowError, createIssue, type WorkflowValidationIssue } from "../errors.ts";
+import {
+	WorkflowError,
+	createIssue,
+	type WorkflowValidationIssue,
+} from "../errors.ts";
 import type {
 	WorkflowDocument,
 	WorkflowEdge,
@@ -50,7 +54,9 @@ export function parseWorkflowDocument(
 	const catalogRepositoryIds = new Set(
 		options.repoCatalog.repositories.map((repository) => repository.id),
 	);
-	const workflowRepositoryIds = new Set(repositories.map((repository) => repository.id));
+	const workflowRepositoryIds = new Set(
+		repositories.map((repository) => repository.id),
+	);
 	const phaseIds = new Set(phases.map((phase) => phase.id));
 	const nodeIds = new Set(nodes.map((node) => node.id));
 
@@ -149,7 +155,11 @@ function parseRepositoryBindings(
 	issues: WorkflowValidationIssue[],
 ): WorkflowRepositoryBinding[] {
 	if (!Array.isArray(value)) {
-		pushInvalidShape(issues, "$.repositories", "repositories must be an array.");
+		pushInvalidShape(
+			issues,
+			"$.repositories",
+			"repositories must be an array.",
+		);
 		return [];
 	}
 
@@ -183,7 +193,10 @@ function parseRepositoryBindings(
 	return repositories;
 }
 
-function parsePhases(value: unknown, issues: WorkflowValidationIssue[]): WorkflowPhase[] {
+function parsePhases(
+	value: unknown,
+	issues: WorkflowValidationIssue[],
+): WorkflowPhase[] {
 	if (!Array.isArray(value)) {
 		pushInvalidShape(issues, "$.phases", "phases must be an array.");
 		return [];
@@ -215,7 +228,10 @@ function parsePhases(value: unknown, issues: WorkflowValidationIssue[]): Workflo
 	return phases;
 }
 
-function parseNodes(value: unknown, issues: WorkflowValidationIssue[]): WorkflowNode[] {
+function parseNodes(
+	value: unknown,
+	issues: WorkflowValidationIssue[],
+): WorkflowNode[] {
 	if (!Array.isArray(value)) {
 		pushInvalidShape(issues, "$.nodes", "nodes must be an array.");
 		return [];
@@ -232,7 +248,11 @@ function parseNodes(value: unknown, issues: WorkflowValidationIssue[]): Workflow
 		const kind = asWorkflowNodeKind(node.kind, `${path}.kind`, issues);
 		const label = asNonEmptyString(node.label, `${path}.label`, issues);
 		const phaseId = asNonEmptyString(node.phaseId, `${path}.phaseId`, issues);
-		const description = asOptionalString(node.description, `${path}.description`, issues);
+		const description = asOptionalString(
+			node.description,
+			`${path}.description`,
+			issues,
+		);
 		const station = asOptionalString(node.station, `${path}.station`, issues);
 		const target = parseExecutionTarget(node.target, `${path}.target`, issues);
 		const settings = asJsonObject(node.settings, `${path}.settings`, issues);
@@ -300,7 +320,10 @@ function parseNodes(value: unknown, issues: WorkflowValidationIssue[]): Workflow
 	return nodes;
 }
 
-function parseEdges(value: unknown, issues: WorkflowValidationIssue[]): WorkflowEdge[] {
+function parseEdges(
+	value: unknown,
+	issues: WorkflowValidationIssue[],
+): WorkflowEdge[] {
 	if (!Array.isArray(value)) {
 		pushInvalidShape(issues, "$.edges", "edges must be an array.");
 		return [];
@@ -314,9 +337,21 @@ function parseEdges(value: unknown, issues: WorkflowValidationIssue[]): Workflow
 			continue;
 		}
 		const id = asNonEmptyString(edge.id, `${path}.id`, issues);
-		const sourceId = asNonEmptyString(edge.sourceId, `${path}.sourceId`, issues);
-		const targetId = asNonEmptyString(edge.targetId, `${path}.targetId`, issues);
-		const condition = asWorkflowEdgeCondition(edge.condition, `${path}.condition`, issues);
+		const sourceId = asNonEmptyString(
+			edge.sourceId,
+			`${path}.sourceId`,
+			issues,
+		);
+		const targetId = asNonEmptyString(
+			edge.targetId,
+			`${path}.targetId`,
+			issues,
+		);
+		const condition = asWorkflowEdgeCondition(
+			edge.condition,
+			`${path}.condition`,
+			issues,
+		);
 		if (!id || !sourceId || !targetId || !condition) {
 			continue;
 		}

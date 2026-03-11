@@ -1,4 +1,8 @@
-import { WorkflowError, createIssue, type WorkflowValidationIssue } from "./errors.ts";
+import {
+	WorkflowError,
+	createIssue,
+	type WorkflowValidationIssue,
+} from "./errors.ts";
 import { appendExecutableGraphIssues } from "./executable-graph.ts";
 import type {
 	CompiledWorkflowDocument,
@@ -17,19 +21,21 @@ export function compileWorkflowDocument(input: {
 	filePath?: string;
 }): CompiledWorkflowDocument {
 	const repositoryCatalogById = new Map(
-		input.repoCatalog.repositories.map((repository) => [repository.id, repository]),
+		input.repoCatalog.repositories.map((repository) => [
+			repository.id,
+			repository,
+		]),
 	);
 	const issues: WorkflowValidationIssue[] = [];
 
-	const repositories: CompiledWorkflowRepositoryBinding[] = input.document.repositories.map(
-		(repository) => {
+	const repositories: CompiledWorkflowRepositoryBinding[] =
+		input.document.repositories.map((repository) => {
 			const catalogEntry = repositoryCatalogById.get(repository.id);
 			return {
 				...repository,
 				label: repository.label ?? catalogEntry?.label ?? repository.id,
 			};
-		},
-	);
+		});
 
 	const nodes = input.document.nodes
 		.map((node, index) => compileNode(node, index, issues))
@@ -40,7 +46,8 @@ export function compileWorkflowDocument(input: {
 	if (issues.length > 0) {
 		throw new WorkflowError({
 			code: "invalid_executable_workflow",
-			message: "Workflow cannot be compiled into the supported v1 executable subset.",
+			message:
+				"Workflow cannot be compiled into the supported v1 executable subset.",
 			filePath: input.filePath,
 			issues,
 		});
@@ -165,7 +172,9 @@ function compileNode(
 
 function readTemplate(settings: JsonObject): WorkflowNodeTemplate | null {
 	const template = settings.template;
-	return typeof template === "string" ? (template as WorkflowNodeTemplate) : null;
+	return typeof template === "string"
+		? (template as WorkflowNodeTemplate)
+		: null;
 }
 
 function validateTemplate(

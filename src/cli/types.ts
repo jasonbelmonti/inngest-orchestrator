@@ -1,4 +1,7 @@
-import type { WorkflowErrorCode, WorkflowValidationIssue } from "../workflows/errors.ts";
+import type {
+	WorkflowErrorCode,
+	WorkflowValidationIssue,
+} from "../workflows/errors.ts";
 import type {
 	CompiledWorkflowDocument,
 	WorkflowRecord,

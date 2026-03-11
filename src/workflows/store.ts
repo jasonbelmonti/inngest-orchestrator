@@ -8,7 +8,10 @@ import {
 } from "./constants.ts";
 import { WorkflowError, createIssue } from "./errors.ts";
 import { hashWorkflowDocument } from "./serialization.ts";
-import { parseWorkflowDocument, parseWorkflowRepositoryCatalog } from "./validation.ts";
+import {
+	parseWorkflowDocument,
+	parseWorkflowRepositoryCatalog,
+} from "./validation.ts";
 import type {
 	WorkflowRecord,
 	WorkflowRepositoryCatalog,
@@ -27,7 +30,8 @@ export class WorkflowStore {
 
 	private readonly repositoryCatalogPath: string;
 	private readonly workflowsDirectoryPath: string;
-	private repositoryCatalogPromise: Promise<WorkflowRepositoryCatalog> | null = null;
+	private repositoryCatalogPromise: Promise<WorkflowRepositoryCatalog> | null =
+		null;
 
 	private constructor(readonly configRoot: string) {
 		this.repositoryCatalogPath = join(
@@ -35,7 +39,10 @@ export class WorkflowStore {
 			REPOSITORIES_DIRECTORY_NAME,
 			REPOSITORY_CATALOG_FILE_NAME,
 		);
-		this.workflowsDirectoryPath = join(this.configRoot, WORKFLOWS_DIRECTORY_NAME);
+		this.workflowsDirectoryPath = join(
+			this.configRoot,
+			WORKFLOWS_DIRECTORY_NAME,
+		);
 	}
 
 	async readRepositoryCatalog() {
@@ -51,9 +58,9 @@ export class WorkflowStore {
 
 	async listWorkflows(): Promise<WorkflowSummary[]> {
 		const records = await this.loadWorkflowRecords();
-		return records.map(({ document, repoCatalog, ...summary }) => summary).sort((left, right) =>
-			left.workflowId.localeCompare(right.workflowId),
-		);
+		return records
+			.map(({ document, repoCatalog, ...summary }) => summary)
+			.sort((left, right) => left.workflowId.localeCompare(right.workflowId));
 	}
 
 	async listWorkflowFilePaths() {
@@ -67,7 +74,9 @@ export class WorkflowStore {
 
 	async readWorkflow(workflowId: string): Promise<WorkflowRecord> {
 		const records = await this.loadWorkflowRecords();
-		const record = records.find((candidate) => candidate.workflowId === workflowId);
+		const record = records.find(
+			(candidate) => candidate.workflowId === workflowId,
+		);
 		if (!record) {
 			throw new WorkflowError({
 				code: "workflow_not_found",
@@ -112,7 +121,9 @@ export class WorkflowStore {
 		const repoCatalog = await this.readRepositoryCatalog();
 		const filePaths = await this.resolveWorkflowFilePaths();
 		const records = await Promise.all(
-			filePaths.map((filePath) => this.loadWorkflowRecord(filePath, repoCatalog)),
+			filePaths.map((filePath) =>
+				this.loadWorkflowRecord(filePath, repoCatalog),
+			),
 		);
 
 		const duplicateIssues = findDuplicateWorkflowIds(records);
@@ -124,7 +135,9 @@ export class WorkflowStore {
 			});
 		}
 
-		return records.sort((left, right) => left.workflowId.localeCompare(right.workflowId));
+		return records.sort((left, right) =>
+			left.workflowId.localeCompare(right.workflowId),
+		);
 	}
 
 	private async resolveWorkflowFilePaths() {
@@ -149,7 +162,9 @@ export class WorkflowStore {
 			});
 		}
 
-		const entries = await readdir(this.workflowsDirectoryPath, { withFileTypes: true });
+		const entries = await readdir(this.workflowsDirectoryPath, {
+			withFileTypes: true,
+		});
 		return entries
 			.filter((entry) => entry.isFile() && extname(entry.name) === ".json")
 			.map((entry) => join(this.workflowsDirectoryPath, entry.name))

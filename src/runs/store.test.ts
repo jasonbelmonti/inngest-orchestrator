@@ -733,7 +733,9 @@ function makeResolvedLaunchRequest(): ResolvedRunLaunchRequest {
 }
 
 async function createDatabasePath() {
-	const directory = await mkdtemp(join(tmpdir(), "inngest-orchestrator-runs-db-"));
+	const directory = await mkdtemp(
+		join(tmpdir(), "inngest-orchestrator-runs-db-"),
+	);
 	tempDirectories.push(directory);
 	return join(directory, "runs.sqlite");
 }

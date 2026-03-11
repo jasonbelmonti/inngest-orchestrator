@@ -20,7 +20,9 @@ export function asObject(
 	issues: WorkflowValidationIssue[],
 ): Record<string, unknown> | null {
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		issues.push(createIssue("invalid_shape", path, `${path} must be an object.`));
+		issues.push(
+			createIssue("invalid_shape", path, `${path} must be an object.`),
+		);
 		return null;
 	}
 	return value as Record<string, unknown>;
@@ -44,7 +46,9 @@ export function asNonEmptyString(
 	issues: WorkflowValidationIssue[],
 ): string | null {
 	if (typeof value !== "string" || value.trim().length === 0) {
-		issues.push(createIssue("invalid_shape", path, `${path} must be a non-empty string.`));
+		issues.push(
+			createIssue("invalid_shape", path, `${path} must be a non-empty string.`),
+		);
 		return null;
 	}
 	return value;
@@ -60,7 +64,11 @@ export function asOptionalString(
 	}
 	if (typeof value !== "string") {
 		issues.push(
-			createIssue("invalid_shape", path, `${path} must be a string when provided.`),
+			createIssue(
+				"invalid_shape",
+				path,
+				`${path} must be a string when provided.`,
+			),
 		);
 		return undefined;
 	}
@@ -73,7 +81,9 @@ export function asBoolean(
 	issues: WorkflowValidationIssue[],
 ): boolean | null {
 	if (typeof value !== "boolean") {
-		issues.push(createIssue("invalid_shape", path, `${path} must be a boolean.`));
+		issues.push(
+			createIssue("invalid_shape", path, `${path} must be a boolean.`),
+		);
 		return null;
 	}
 	return value;
@@ -85,7 +95,9 @@ export function asFiniteNumber(
 	issues: WorkflowValidationIssue[],
 ): number | null {
 	if (typeof value !== "number" || !Number.isFinite(value)) {
-		issues.push(createIssue("invalid_shape", path, `${path} must be a finite number.`));
+		issues.push(
+			createIssue("invalid_shape", path, `${path} must be a finite number.`),
+		);
 		return null;
 	}
 	return value;
@@ -194,6 +206,8 @@ export function pushInvalidShape(
 	return null;
 }
 
-export function requiresRepoTarget(kind: WorkflowNodeKind): kind is RepoTargetNodeKind {
+export function requiresRepoTarget(
+	kind: WorkflowNodeKind,
+): kind is RepoTargetNodeKind {
 	return REPO_TARGET_NODE_KINDS.includes(kind as RepoTargetNodeKind);
 }

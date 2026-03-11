@@ -17,6 +17,8 @@ To test:
 ```bash
 bun run test
 bun run typecheck
+bun run ci:lint
+bun run ci:format-check
 ```
 
 Workflow CLI:
@@ -29,6 +31,22 @@ echo '{ "document": { ... } }' | bun ./src/cli.ts workflow validate --config-roo
 
 Use the direct `bun ./src/cli.ts ...` entrypoint for machine-consumable JSON output. `bun run <script>`
 adds Bun wrapper output on non-zero exits.
+
+CI commands:
+
+```bash
+bun run ci:test
+bun run ci:smoke
+bun run ci:security
+bun run ci:coverage
+```
+
+A GitHub Actions workflow now runs:
+
+- typecheck/tests
+- lint/format checks
+- CLI contract smoke checks (`list`, `read`, `validate`, `save`, malformed inputs, and missing config root)
+- bun audit on a weekly schedule + manual dispatch
 
 Example config root:
 

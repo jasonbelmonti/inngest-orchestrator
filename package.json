@@ -5,9 +5,16 @@
   "private": true,
   "scripts": {
     "test": "bun test ./src",
-    "typecheck": "bun x tsc --noEmit"
+    "typecheck": "bun x tsc --noEmit",
+    "ci:lint": "bunx @biomejs/biome lint ./src ./index.ts",
+    "ci:format-check": "bunx @biomejs/biome format ./src ./index.ts",
+    "ci:test": "bun test ./src",
+    "ci:smoke": "bun ./scripts/ci-smoke.ts",
+    "ci:security": "bun audit --audit-level high",
+    "ci:coverage": "bun test ./src --coverage"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@types/bun": "latest"
   },
   "peerDependencies": {

@@ -4,7 +4,11 @@ export class CliError extends Error {
 	readonly code: CliErrorCode;
 	readonly command?: string;
 
-	constructor(input: { code: CliErrorCode; message: string; command?: string }) {
+	constructor(input: {
+		code: CliErrorCode;
+		message: string;
+		command?: string;
+	}) {
 		super(input.message);
 		this.name = "CliError";
 		this.code = input.code;

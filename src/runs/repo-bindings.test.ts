@@ -3,7 +3,10 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { serializeWorkflowRepositoryCatalog } from "../workflows/serialization.ts";
-import { makeRepositoryCatalog, makeWorkflow } from "../workflows/test-fixtures.ts";
+import {
+	makeRepositoryCatalog,
+	makeWorkflow,
+} from "../workflows/test-fixtures.ts";
 import { resolveRunLaunchRequest } from "./repo-bindings.ts";
 
 const tempDirectories: string[] = [];
@@ -49,20 +52,20 @@ describe("resolveRunLaunchRequest", () => {
 				contentHash: expect.any(String),
 				filePath: expect.stringContaining("/workflows/cross-repo-bugfix.json"),
 			}),
-				repoBindings: [
-					{
-						repoId: "agent-console",
-						label: "Agent Console",
-						required: true,
-						status: "resolved",
-						resolvedPath: agentConsolePath,
-					},
-					{
-						repoId: "inngest-orchestrator",
-						label: "Inngest Orchestrator",
-						required: false,
-						status: "resolved",
-						resolvedPath: orchestratorPath,
+			repoBindings: [
+				{
+					repoId: "agent-console",
+					label: "Agent Console",
+					required: true,
+					status: "resolved",
+					resolvedPath: agentConsolePath,
+				},
+				{
+					repoId: "inngest-orchestrator",
+					label: "Inngest Orchestrator",
+					required: false,
+					status: "resolved",
+					resolvedPath: orchestratorPath,
 				},
 			],
 		});
@@ -173,7 +176,7 @@ describe("resolveRunLaunchRequest", () => {
 				repoBindings: {
 					"agent-console": agentConsolePath,
 					"inngest-orchestrator": extraPath,
-					"claudex": extraPath,
+					claudex: extraPath,
 				},
 			}),
 		).rejects.toMatchObject({
@@ -210,7 +213,9 @@ describe("resolveRunLaunchRequest", () => {
 	});
 
 	test("rejects malformed top-level launch payloads", async () => {
-		await expect(resolveRunLaunchRequest("not-an-object")).rejects.toMatchObject({
+		await expect(
+			resolveRunLaunchRequest("not-an-object"),
+		).rejects.toMatchObject({
 			code: "invalid_run_launch_input",
 			issues: expect.arrayContaining([
 				expect.objectContaining({
@@ -235,7 +240,10 @@ describe("resolveRunLaunchRequest", () => {
 		await expect(
 			resolveRunLaunchRequest({
 				workflowId: "cross-repo-bugfix",
-				configRoot: join(await createTempDirectory("missing-config-root"), "missing"),
+				configRoot: join(
+					await createTempDirectory("missing-config-root"),
+					"missing",
+				),
 				repoBindings: {},
 			}),
 		).rejects.toMatchObject({
@@ -301,7 +309,10 @@ describe("resolveRunLaunchRequest", () => {
 
 	test("ignores unrelated invalid workflow files when launching a valid workflow", async () => {
 		const configRoot = await createTempConfigRoot();
-		await Bun.write(join(configRoot, "workflows", "broken.json"), "{ invalid json\n");
+		await Bun.write(
+			join(configRoot, "workflows", "broken.json"),
+			"{ invalid json\n",
+		);
 		const agentConsolePath = await createTempDirectory("agent-console");
 		const orchestratorPath = await createTempDirectory("inngest-runtime");
 
@@ -365,11 +376,11 @@ describe("resolveRunLaunchRequest", () => {
 	test("reports targeted duplicate workflow ids with stable workflowId issue paths", async () => {
 		const configRoot = await createTempConfigRoot({
 			workflows: {
-				"a": makeWorkflow({
+				a: makeWorkflow({
 					workflowId: "ship-feature",
 					name: "Ship Feature A",
 				}),
-				"b": makeWorkflow({
+				b: makeWorkflow({
 					workflowId: "ship-feature",
 					name: "Ship Feature B",
 				}),
@@ -397,7 +408,11 @@ describe("resolveRunLaunchRequest", () => {
 		const configRoot = await createTempConfigRoot({
 			workflows: {},
 		});
-		const targetFilePath = join(configRoot, "workflows", "cross-repo-bugfix.json");
+		const targetFilePath = join(
+			configRoot,
+			"workflows",
+			"cross-repo-bugfix.json",
+		);
 		await Bun.write(targetFilePath, "{ invalid json\n");
 
 		await expect(
@@ -548,7 +563,7 @@ describe("resolveRunLaunchRequest", () => {
 										...node.settings,
 										template: "task.unstable",
 									},
-							  }
+								}
 							: node,
 					),
 				},
@@ -572,7 +587,9 @@ describe("resolveRunLaunchRequest", () => {
 				expect.objectContaining({
 					code: "workflow_not_executable",
 					path: "$.nodes[1].settings.template",
-					filePath: expect.stringContaining("/workflows/cross-repo-bugfix.json"),
+					filePath: expect.stringContaining(
+						"/workflows/cross-repo-bugfix.json",
+					),
 				}),
 			],
 		});
@@ -629,8 +646,14 @@ describe("resolveRunLaunchRequest", () => {
 
 	test("rejects repo binding paths that do not point to existing directories", async () => {
 		const configRoot = await createTempConfigRoot();
-		const missingPath = join(await createTempDirectory("bindings-root"), "missing");
-		const notDirectoryPath = join(await createTempDirectory("bindings-root"), "file.txt");
+		const missingPath = join(
+			await createTempDirectory("bindings-root"),
+			"missing",
+		);
+		const notDirectoryPath = join(
+			await createTempDirectory("bindings-root"),
+			"file.txt",
+		);
 		await Bun.write(notDirectoryPath, "not a directory\n");
 
 		await expect(
@@ -653,8 +676,8 @@ describe("resolveRunLaunchRequest", () => {
 					code: "repo_binding_path_not_directory",
 					path: "$.repoBindings.inngest-orchestrator",
 				}),
-				]),
-			});
+			]),
+		});
 	});
 
 	test("supports repo ids that would collide with Object prototype keys", async () => {

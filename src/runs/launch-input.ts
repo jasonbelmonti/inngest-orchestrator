@@ -18,8 +18,16 @@ export function parseRunLaunchRequest(input: unknown): RunLaunchRequest {
 		});
 	}
 
-	const workflowId = readRequiredString(input.workflowId, "$.workflowId", issues);
-	const configRoot = readRequiredString(input.configRoot, "$.configRoot", issues);
+	const workflowId = readRequiredString(
+		input.workflowId,
+		"$.workflowId",
+		issues,
+	);
+	const configRoot = readRequiredString(
+		input.configRoot,
+		"$.configRoot",
+		issues,
+	);
 	const repoBindings = readRepoBindings(input.repoBindings, issues);
 
 	if (issues.length > 0) {
@@ -37,7 +45,11 @@ export function parseRunLaunchRequest(input: unknown): RunLaunchRequest {
 	};
 }
 
-function readRequiredString(value: unknown, path: string, issues: RunLaunchIssue[]) {
+function readRequiredString(
+	value: unknown,
+	path: string,
+	issues: RunLaunchIssue[],
+) {
 	if (typeof value === "string" && value.trim().length > 0) {
 		return value;
 	}

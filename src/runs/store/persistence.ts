@@ -208,8 +208,10 @@ export function writeRunProjection(
 			state.failureMessage,
 		);
 
-	database.query(`DELETE FROM approval_requests WHERE run_id = ?1`).run(state.runId);
-	database.query(`DELETE FROM artifacts WHERE run_id = ?1`).run(state.runId);
+	database
+		.query("DELETE FROM approval_requests WHERE run_id = ?1")
+		.run(state.runId);
+	database.query("DELETE FROM artifacts WHERE run_id = ?1").run(state.runId);
 
 	for (const approval of state.approvals) {
 		database

@@ -13,7 +13,10 @@ export async function resolveRepositoryBindings(
 	repositoryCatalog: WorkflowRepositoryCatalogEntry[],
 	inputBindings: Record<string, string>,
 ) {
-	const issues = validateUnknownRepoBindings(declaredRepositories, inputBindings);
+	const issues = validateUnknownRepoBindings(
+		declaredRepositories,
+		inputBindings,
+	);
 	const resolvedBindings: ResolvedRunRepositoryBinding[] = [];
 	const labelsByRepoId = new Map(
 		repositoryCatalog.map((repository) => [repository.id, repository.label]),

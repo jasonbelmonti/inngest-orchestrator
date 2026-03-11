@@ -22,11 +22,15 @@ export function hashWorkflowDocument(document: WorkflowDocument): string {
 		.digest("hex");
 }
 
-function stableStringify(value: JsonValue | WorkflowDocument | WorkflowRepositoryCatalog) {
+function stableStringify(
+	value: JsonValue | WorkflowDocument | WorkflowRepositoryCatalog,
+) {
 	return JSON.stringify(sortJsonValue(value), null, 2);
 }
 
-function sortJsonValue(value: JsonValue | WorkflowDocument | WorkflowRepositoryCatalog): JsonValue {
+function sortJsonValue(
+	value: JsonValue | WorkflowDocument | WorkflowRepositoryCatalog,
+): JsonValue {
 	if (Array.isArray(value)) {
 		return value.map((entry) => sortJsonValue(entry));
 	}

@@ -2,8 +2,11 @@ import { lstat, realpath, stat } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { compileWorkflowDocument } from "./compiler.ts";
 import { WorkflowError, createIssue } from "./errors.ts";
-import { hashWorkflowDocument, serializeWorkflowDocument } from "./serialization.ts";
-import { WorkflowStore } from "./store.ts";
+import {
+	hashWorkflowDocument,
+	serializeWorkflowDocument,
+} from "./serialization.ts";
+import type { WorkflowStore } from "./store.ts";
 import type {
 	CompiledWorkflowDocument,
 	WorkflowDocument,
@@ -103,7 +106,9 @@ export async function saveWorkflowDocument(input: {
 	const workflow: WorkflowRecord = {
 		workflowId: validated.document.workflowId,
 		name: validated.document.name,
-		...(validated.document.summary ? { summary: validated.document.summary } : {}),
+		...(validated.document.summary
+			? { summary: validated.document.summary }
+			: {}),
 		updatedAt: fileStats.mtime.toISOString(),
 		nodeCount: validated.document.nodes.length,
 		edgeCount: validated.document.edges.length,
@@ -168,11 +173,14 @@ async function resolveSaveTargetPath(input: {
 	if (!isAbsolute(candidatePath) || extname(candidatePath) !== ".json") {
 		throw new WorkflowError({
 			code: "workflow_save_conflict",
-			message: "Workflow save target must be a JSON file inside the config-root workflows directory.",
+			message:
+				"Workflow save target must be a JSON file inside the config-root workflows directory.",
 			filePath: candidatePath,
 		});
 	}
-	if (resolve(dirname(candidatePath)) !== resolve(input.workflowsDirectoryPath)) {
+	if (
+		resolve(dirname(candidatePath)) !== resolve(input.workflowsDirectoryPath)
+	) {
 		throw new WorkflowError({
 			code: "workflow_save_conflict",
 			message:
@@ -194,7 +202,8 @@ function assertOptimisticSave(input: {
 		if (input.expectedContentHash !== null) {
 			throw new WorkflowError({
 				code: "workflow_save_conflict",
-				message: "Cannot apply an optimistic save baseline to a workflow file that does not exist yet.",
+				message:
+					"Cannot apply an optimistic save baseline to a workflow file that does not exist yet.",
 				filePath: input.targetFilePath,
 			});
 		}
@@ -207,7 +216,8 @@ function assertOptimisticSave(input: {
 	if (input.expectedContentHash === null) {
 		throw new WorkflowError({
 			code: "workflow_save_conflict",
-			message: "Saving an existing workflow requires the previous content hash.",
+			message:
+				"Saving an existing workflow requires the previous content hash.",
 			filePath: input.targetFilePath,
 		});
 	}

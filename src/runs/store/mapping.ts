@@ -56,7 +56,9 @@ export function mapRunProjectionRecord(input: {
 	approvals: ApprovalRow[];
 	artifacts: ArtifactRow[];
 }): RunProjectionRecord {
-	const launch = parseJson<RunProjectionRecord["launch"]>(input.row.launch_json);
+	const launch = parseJson<RunProjectionRecord["launch"]>(
+		input.row.launch_json,
+	);
 	return {
 		runId: input.row.run_id,
 		launch,
@@ -118,7 +120,9 @@ export function serializeRunEventPayload(event: StoredRunEvent) {
 	};
 }
 
-export function serializeRunProjectionLaunch(launch: RunProjectionRecord["launch"]) {
+export function serializeRunProjectionLaunch(
+	launch: RunProjectionRecord["launch"],
+) {
 	return JSON.stringify(launch);
 }
 

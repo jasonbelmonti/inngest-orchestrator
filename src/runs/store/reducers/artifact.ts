@@ -11,18 +11,18 @@ export function reduceArtifactCreated(
 	event: Extract<StoredRunEvent, { type: "artifact.created" }>,
 ): RunProjectionRecord {
 	const existing = assertRunState(state, event.runId);
-	assertRunStatus(
-		existing,
-		["running", "waiting_for_approval"],
-		event.type,
-	);
+	assertRunStatus(existing, ["running", "waiting_for_approval"], event.type);
 	if (existing.currentStepId !== event.stepId) {
 		throw new RunStoreError({
 			code: "run_store_invalid_transition",
 			message: `Artifact "${event.artifactId}" must target the active step for run "${event.runId}".`,
 		});
 	}
-	if (existing.artifacts.some((artifact) => artifact.artifactId === event.artifactId)) {
+	if (
+		existing.artifacts.some(
+			(artifact) => artifact.artifactId === event.artifactId,
+		)
+	) {
 		throw new RunStoreError({
 			code: "run_store_conflict",
 			message: `Artifact "${event.artifactId}" already exists for run "${event.runId}".`,

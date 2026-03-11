@@ -25,8 +25,12 @@ export function appendExecutableGraphIssues(
 ) {
 	const edgesBySource = new Map<string, WorkflowEdge[]>();
 	const edgesByTarget = new Map<string, WorkflowEdge[]>();
-	const nodeIndexById = new Map(document.nodes.map((node, index) => [node.id, index]));
-	const edgeIndexById = new Map(document.edges.map((edge, index) => [edge.id, index]));
+	const nodeIndexById = new Map(
+		document.nodes.map((node, index) => [node.id, index]),
+	);
+	const edgeIndexById = new Map(
+		document.edges.map((edge, index) => [edge.id, index]),
+	);
 
 	for (const edge of document.edges) {
 		const outgoing = edgesBySource.get(edge.sourceId) ?? [];
@@ -55,7 +59,8 @@ export function appendExecutableGraphIssues(
 
 	for (const [index, node] of document.nodes.entries()) {
 		const incoming = edgesByTarget.get(node.id) ?? [];
-		const distinctSourceCount = new Set(incoming.map((edge) => edge.sourceId)).size;
+		const distinctSourceCount = new Set(incoming.map((edge) => edge.sourceId))
+			.size;
 		if (distinctSourceCount > 1) {
 			issues.push(
 				createIssue(
@@ -74,7 +79,10 @@ export function appendExecutableGraphIssues(
 			issues,
 		});
 
-		if ((node.kind === "trigger" || node.kind === "gate") && outgoing.length === 0) {
+		if (
+			(node.kind === "trigger" || node.kind === "gate") &&
+			outgoing.length === 0
+		) {
 			issues.push(
 				createIssue(
 					"missing_required_transition",
@@ -85,7 +93,9 @@ export function appendExecutableGraphIssues(
 		}
 
 		if (
-			(node.kind === "task" || node.kind === "check" || node.kind === "artifact") &&
+			(node.kind === "task" ||
+				node.kind === "check" ||
+				node.kind === "artifact") &&
 			!outgoing.some((edge) => edge.condition === "on_success")
 		) {
 			issues.push(
@@ -161,7 +171,8 @@ function validateOutgoingEdges(input: {
 
 	for (const edge of input.outgoing) {
 		const edgeIndex = input.edgeIndexById.get(edge.id) ?? -1;
-		const edgePath = edgeIndex >= 0 ? `$.edges[${edgeIndex}].condition` : "$.edges";
+		const edgePath =
+			edgeIndex >= 0 ? `$.edges[${edgeIndex}].condition` : "$.edges";
 
 		if (!allowedConditions.includes(edge.condition)) {
 			input.issues.push(
@@ -196,7 +207,10 @@ function appendCycleIssues(input: {
 	issues: WorkflowValidationIssue[];
 }) {
 	const remainingIncomingByNodeId = new Map(
-		input.document.nodes.map((node) => [node.id, (input.edgesByTarget.get(node.id) ?? []).length]),
+		input.document.nodes.map((node) => [
+			node.id,
+			(input.edgesByTarget.get(node.id) ?? []).length,
+		]),
 	);
 	const readyNodeIds = input.document.nodes
 		.filter((node) => (remainingIncomingByNodeId.get(node.id) ?? 0) === 0)
@@ -210,7 +224,8 @@ function appendCycleIssues(input: {
 		}
 		processedNodeCount += 1;
 		for (const edge of input.edgesBySource.get(nodeId) ?? []) {
-			const remainingIncoming = (remainingIncomingByNodeId.get(edge.targetId) ?? 0) - 1;
+			const remainingIncoming =
+				(remainingIncomingByNodeId.get(edge.targetId) ?? 0) - 1;
 			remainingIncomingByNodeId.set(edge.targetId, remainingIncoming);
 			if (remainingIncoming === 0) {
 				readyNodeIds.push(edge.targetId);
@@ -243,13 +258,20 @@ function appendUnreachableNodeIssues(input: {
 	nodeIndexById: Map<string, number>;
 	issues: WorkflowValidationIssue[];
 }) {
-	const triggerNodes = input.document.nodes.filter((node) => node.kind === "trigger");
+	const triggerNodes = input.document.nodes.filter(
+		(node) => node.kind === "trigger",
+	);
 	if (triggerNodes.length !== 1) {
 		return;
 	}
 
 	const visitedNodeIds = new Set<string>();
-	const pendingNodeIds = [triggerNodes[0]!.id];
+	const [triggerNode] = triggerNodes;
+	if (!triggerNode) {
+		return;
+	}
+
+	const pendingNodeIds = [triggerNode.id];
 
 	while (pendingNodeIds.length > 0) {
 		const nodeId = pendingNodeIds.pop();

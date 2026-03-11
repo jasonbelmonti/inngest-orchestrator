@@ -74,10 +74,6 @@ async function readWorkflowForLaunch(
 		}
 	}
 
-	if (matchingRecords.length === 1) {
-		return matchingRecords[0]!;
-	}
-
 	if (matchingRecords.length === 0) {
 		if (matchingErrors.length > 1) {
 			throw createDuplicateWorkflowError(
@@ -104,7 +100,15 @@ async function readWorkflowForLaunch(
 		);
 	}
 
-	return matchingRecords[0]!;
+	const [matchingRecord] = matchingRecords;
+	if (!matchingRecord) {
+		throw new WorkflowError({
+			code: "workflow_not_found",
+			message: `Workflow "${workflowId}" was not found.`,
+		});
+	}
+
+	return matchingRecord;
 }
 
 async function matchesRequestedWorkflow(filePath: string, workflowId: string) {
@@ -159,8 +163,7 @@ function toRunLaunchError(
 
 	if (
 		error.code === "invalid_workflow_document" ||
-		(error.code === "invalid_json" &&
-			isWorkflowFileError(error))
+		(error.code === "invalid_json" && isWorkflowFileError(error))
 	) {
 		return new RunLaunchError({
 			code: "invalid_run_launch_input",
