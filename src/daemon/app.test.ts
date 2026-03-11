@@ -227,6 +227,49 @@ describe("daemon app", () => {
 		});
 	});
 
+	test("POST /runs/:id/control supports rejected approvals", async () => {
+		const harness = await createDaemonTestHarness();
+		await seedActiveStepRun(harness, "run-reject");
+
+		await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-reject/control",
+			{
+				action: "request_approval",
+				approvalId: "approval-002",
+				stepId: "implement",
+			},
+		);
+
+		const response = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-reject/control",
+			{
+				action: "resolve_approval",
+				approvalId: "approval-002",
+				decision: "rejected",
+				comment: "needs changes",
+			},
+		);
+
+		expect(response.status).toBe(200);
+		expect(await expectJson(response)).toMatchObject({
+			ok: true,
+			run: expect.objectContaining({
+				status: "running",
+				approvals: [
+					expect.objectContaining({
+						approvalId: "approval-002",
+						status: "rejected",
+						comment: "needs changes",
+					}),
+				],
+			}),
+		});
+	});
+
 	test("POST /runs/:id/control rejects invalid action shapes", async () => {
 		const harness = await createDaemonTestHarness();
 
@@ -249,6 +292,74 @@ describe("daemon app", () => {
 		});
 	});
 
+	test("POST /runs/:id/control rejects non-string optional control fields", async () => {
+		const harness = await createDaemonTestHarness();
+		await seedActiveStepRun(harness, "run-invalid-optional");
+
+		const requestApproval = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-invalid-optional/control",
+			{
+				action: "request_approval",
+				approvalId: "approval-003",
+				stepId: "implement",
+				message: 123,
+			},
+		);
+
+		expect(requestApproval.status).toBe(400);
+		expect(await expectJson(requestApproval)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "invalid_http_input",
+				message: '"message" must be a string when provided.',
+			}),
+		});
+
+		const resolveApproval = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-invalid-optional/control",
+			{
+				action: "resolve_approval",
+				approvalId: "approval-003",
+				decision: "approved",
+				comment: 456,
+			},
+		);
+
+		expect(resolveApproval.status).toBe(400);
+		expect(await expectJson(resolveApproval)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "invalid_http_input",
+				message: '"comment" must be a string when provided.',
+			}),
+		});
+	});
+
+	test("POST /runs returns structured JSON for malformed request bodies", async () => {
+		const harness = await createDaemonTestHarness();
+
+		const response = await harness.app.fetch(
+			new Request("http://daemon.test/runs", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: '{"workflowId":',
+			}),
+		);
+
+		expect(response.status).toBe(400);
+		expect(await expectJson(response)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "invalid_json_body",
+				message: "Request body must be valid JSON.",
+			}),
+		});
+	});
+
 	test("returns structured JSON for malformed percent-encoded paths", async () => {
 		const harness = await createDaemonTestHarness();
 
@@ -264,6 +375,30 @@ describe("daemon app", () => {
 			error: expect.objectContaining({
 				code: "invalid_http_input",
 				message: "Request path contains invalid percent-encoding.",
+			}),
+		});
+	});
+
+	test("double-slash control paths do not collapse into run detail routes", async () => {
+		const harness = await createDaemonTestHarness();
+
+		await dispatchDaemonRequest(harness.app, "POST", "/runs", {
+			workflowId: "cross-repo-bugfix",
+			configRoot: harness.configRoot,
+			repoBindings: harness.repoBindings,
+		});
+
+		const response = await dispatchDaemonRequest(
+			harness.app,
+			"GET",
+			"/runs//control",
+		);
+
+		expect(response.status).toBe(404);
+		expect(await expectJson(response)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "route_not_found",
 			}),
 		});
 	});

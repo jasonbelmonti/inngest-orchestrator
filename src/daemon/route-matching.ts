@@ -7,7 +7,13 @@ export type DaemonRouteMatch =
 	| { kind: "not-found"; pathname: string };
 
 export function matchDaemonRoute(pathname: string): DaemonRouteMatch {
-	const segments = pathname.split("/").filter(Boolean).map(decodePathSegment);
+	const normalizedPath = pathname.startsWith("/")
+		? pathname.slice(1)
+		: pathname;
+	const segments =
+		normalizedPath.length === 0
+			? []
+			: normalizedPath.split("/").map(decodePathSegment);
 	const runId = segments[1];
 
 	if (segments.length === 1 && segments[0] === "runs") {

@@ -21,12 +21,14 @@ export function parseRunControlRequest(input: unknown): RunControlRequest {
 
 	switch (input.action) {
 		case "cancel":
-			if ("reason" in input && typeof input.reason !== "string") {
-				throw invalidControlRequest('"reason" must be a string when provided.');
-			}
-			return typeof input.reason === "string"
-				? { action: "cancel", reason: input.reason }
-				: { action: "cancel" };
+			return {
+				action: "cancel",
+				...parseOptionalStringField(
+					input,
+					"reason",
+					'"reason" must be a string when provided.',
+				),
+			};
 		case "request_approval":
 			return {
 				action: "request_approval",
@@ -38,9 +40,11 @@ export function parseRunControlRequest(input: unknown): RunControlRequest {
 					input.stepId,
 					'"stepId" must be a non-empty string.',
 				),
-				...(typeof input.message === "string"
-					? { message: input.message }
-					: {}),
+				...parseOptionalStringField(
+					input,
+					"message",
+					'"message" must be a string when provided.',
+				),
 			};
 		case "resolve_approval":
 			return {
@@ -50,9 +54,11 @@ export function parseRunControlRequest(input: unknown): RunControlRequest {
 					'"approvalId" must be a non-empty string.',
 				),
 				decision: requireDecision(input.decision),
-				...(typeof input.comment === "string"
-					? { comment: input.comment }
-					: {}),
+				...parseOptionalStringField(
+					input,
+					"comment",
+					'"comment" must be a string when provided.',
+				),
 			};
 		default:
 			throw invalidControlRequest(
@@ -87,4 +93,20 @@ function invalidControlRequest(message: string) {
 
 function isRecord(input: unknown): input is Record<string, unknown> {
 	return typeof input === "object" && input !== null && !Array.isArray(input);
+}
+
+function parseOptionalStringField(
+	input: Record<string, unknown>,
+	fieldName: string,
+	message: string,
+) {
+	if (!(fieldName in input) || input[fieldName] === undefined) {
+		return {};
+	}
+
+	if (typeof input[fieldName] !== "string") {
+		throw invalidControlRequest(message);
+	}
+
+	return { [fieldName]: input[fieldName] } as Record<string, string>;
 }

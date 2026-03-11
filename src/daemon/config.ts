@@ -19,9 +19,9 @@ export function resolveDaemonRuntimeConfig(
 	env: NodeJS.ProcessEnv = process.env,
 ): DaemonRuntimeConfig {
 	return {
-		host: env.INGGEST_ORCHESTRATOR_HOST || DEFAULT_HOST,
-		port: parsePort(env.INGGEST_ORCHESTRATOR_PORT),
-		databasePath: env.INGGEST_ORCHESTRATOR_DB_PATH || DEFAULT_DATABASE_PATH,
+		host: env.INNGEST_ORCHESTRATOR_HOST || DEFAULT_HOST,
+		port: parsePort(env.INNGEST_ORCHESTRATOR_PORT),
+		databasePath: env.INNGEST_ORCHESTRATOR_DB_PATH || DEFAULT_DATABASE_PATH,
 		idleTimeoutSeconds: DEFAULT_IDLE_TIMEOUT_SECONDS,
 	};
 }
@@ -31,10 +31,16 @@ function parsePort(input: string | undefined) {
 		return DEFAULT_PORT;
 	}
 
-	const value = Number.parseInt(input, 10);
-	if (Number.isNaN(value) || value <= 0) {
+	if (!/^\d+$/.test(input)) {
 		throw new Error(
-			`INGGEST_ORCHESTRATOR_PORT must be a positive integer. Received "${input}".`,
+			`INNGEST_ORCHESTRATOR_PORT must be a positive integer. Received "${input}".`,
+		);
+	}
+
+	const value = Number.parseInt(input, 10);
+	if (value <= 0) {
+		throw new Error(
+			`INNGEST_ORCHESTRATOR_PORT must be a positive integer. Received "${input}".`,
 		);
 	}
 

@@ -18,9 +18,9 @@ Default runtime settings:
 
 Optional environment overrides:
 
-- `INGGEST_ORCHESTRATOR_HOST`
-- `INGGEST_ORCHESTRATOR_PORT`
-- `INGGEST_ORCHESTRATOR_DB_PATH`
+- `INNGEST_ORCHESTRATOR_HOST`
+- `INNGEST_ORCHESTRATOR_PORT`
+- `INNGEST_ORCHESTRATOR_DB_PATH`
 
 This slice is local-only. It does not add authentication or remote bind behavior.
 
