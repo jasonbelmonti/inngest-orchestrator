@@ -19,6 +19,7 @@ import {
 } from "./persistence.ts";
 import type {
 	CreateRunRecordInput,
+	CreateStartedRunRecordInput,
 	RunEventInput,
 	RunProjectionRecord,
 } from "./types.ts";
@@ -37,6 +38,7 @@ export class SQLiteRunStore {
 	}
 
 	private readonly createRunTransaction;
+	private readonly createStartedRunTransaction;
 	private readonly appendEventTransaction;
 
 	private constructor(private readonly database: Database) {
@@ -51,6 +53,34 @@ export class SQLiteRunStore {
 				const event = createRunCreatedEvent(input);
 				const nextState = applyRunEvent(null, event);
 				insertRunEvent(this.database, event);
+				writeRunProjection(this.database, nextState);
+				return nextState;
+			},
+		);
+
+		this.createStartedRunTransaction = this.database.transaction(
+			(input: CreateStartedRunRecordInput) => {
+				if (this.readRun(input.runId)) {
+					throw new RunStoreError({
+						code: "run_store_conflict",
+						message: `Run "${input.runId}" already exists.`,
+					});
+				}
+				const createdEvent = createRunCreatedEvent(input);
+				const startedEvent = appendSequenceToEvent({
+					runId: input.runId,
+					sequence: 2,
+					event: {
+						type: "run.started",
+						occurredAt: input.startedAt,
+					},
+				});
+
+				let nextState = applyRunEvent(null, createdEvent);
+				insertRunEvent(this.database, createdEvent);
+
+				nextState = applyRunEvent(nextState, startedEvent);
+				insertRunEvent(this.database, startedEvent);
 				writeRunProjection(this.database, nextState);
 				return nextState;
 			},
@@ -79,6 +109,10 @@ export class SQLiteRunStore {
 
 	createRun(input: CreateRunRecordInput) {
 		return this.createRunTransaction(input) as RunProjectionRecord;
+	}
+
+	createStartedRun(input: CreateStartedRunRecordInput) {
+		return this.createStartedRunTransaction(input) as RunProjectionRecord;
 	}
 
 	appendEvent(input: { runId: string; event: RunEventInput }) {

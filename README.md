@@ -5,6 +5,7 @@ Local workflow orchestrator for the broader Agent Cockpit initiative.
 Planning starts from [docs/inngest-orchestrator-mvp-plan.md](./docs/inngest-orchestrator-mvp-plan.md).
 The current implemented slices are the config-root workflow schema and the workflow authoring CLI
 documented in [docs/workflow-schema.md](./docs/workflow-schema.md).
+It now also includes the first local daemon API documented in [docs/daemon-api.md](./docs/daemon-api.md).
 
 To install dependencies:
 
@@ -31,6 +32,17 @@ echo '{ "document": { ... } }' | bun ./src/cli.ts workflow validate --config-roo
 
 Use the direct `bun ./src/cli.ts ...` entrypoint for machine-consumable JSON output. `bun run <script>`
 adds Bun wrapper output on non-zero exits.
+
+Local daemon:
+
+```bash
+bun ./src/daemon.ts
+```
+
+Default daemon bind:
+
+- `127.0.0.1:3017`
+- SQLite at `.local/inngest-orchestrator.sqlite`
 
 CI commands:
 

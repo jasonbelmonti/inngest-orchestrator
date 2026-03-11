@@ -16,6 +16,10 @@ export interface CreateRunRecordInput {
 	launch: ResolvedRunLaunchRequest;
 }
 
+export interface CreateStartedRunRecordInput extends CreateRunRecordInput {
+	startedAt: string;
+}
+
 export type RunEventInput =
 	| {
 			type: "run.started";
