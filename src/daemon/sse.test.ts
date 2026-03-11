@@ -37,7 +37,7 @@ test("aborting an active stream removes the subscriber and closes the stream", a
 	expect(getSubscriberBuckets(broker).has("run-live")).toBe(false);
 });
 
-test("oversized first frames are delivered before slow subscribers are dropped", async () => {
+test("frames larger than the remaining queue budget drop slow subscribers", async () => {
 	const broker = new RunEventStreamBroker({
 		keepAliveMs: 60_000,
 		maxBufferedBytes: 256,
@@ -47,8 +47,11 @@ test("oversized first frames are delivered before slow subscribers are dropped",
 
 	expect(broker.subscriberCount("run-slow")).toBe(1);
 
-	broker.publish("run-slow", [makeStoredEvent(1, "x".repeat(120))]);
-	broker.publish("run-slow", [makeStoredEvent(2, "z")]);
+	broker.publish("run-slow", [makeStoredEvent(1, "ok")]);
+
+	expect(broker.subscriberCount("run-slow")).toBe(1);
+
+	broker.publish("run-slow", [makeStoredEvent(2, "x".repeat(120))]);
 
 	expect(broker.subscriberCount("run-slow")).toBe(0);
 	expect(getSubscriberBuckets(broker).has("run-slow")).toBe(false);

@@ -12,7 +12,7 @@ interface StreamSubscriber {
 }
 
 const DEFAULT_KEEP_ALIVE_MS = 15_000;
-const DEFAULT_MAX_BUFFERED_BYTES = 64 * 1024;
+const DEFAULT_MAX_BUFFERED_BYTES = 1024 * 1024;
 
 export class RunEventStreamBroker {
 	private readonly keepAliveMs: number;
@@ -42,7 +42,7 @@ export class RunEventStreamBroker {
 					subscriber = {
 						enqueue: (chunk) => {
 							const desiredSize = controller.desiredSize;
-							if (desiredSize === null || desiredSize <= 0) {
+							if (desiredSize === null || desiredSize < chunk.byteLength) {
 								subscriber?.close();
 								this.unsubscribe(runId, subscriber, keepAliveTimer);
 								return false;
