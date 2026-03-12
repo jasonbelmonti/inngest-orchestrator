@@ -10,6 +10,7 @@ import {
 } from "../workflows/test-fixtures.ts";
 import { createDaemonApp } from "./app.ts";
 import { RunEventStreamBroker } from "./sse.ts";
+import type { DaemonRequestHandler, RuntimeDispatchFunction } from "./types.ts";
 
 const tempDirectories: string[] = [];
 const openStores: SQLiteRunStore[] = [];
@@ -24,6 +25,12 @@ export interface DaemonTestHarness {
 	store: SQLiteRunStore;
 	eventStreamBroker: RunEventStreamBroker;
 	app: ReturnType<typeof createDaemonApp>;
+}
+
+interface CreateDaemonTestHarnessOptions {
+	dispatchRun?: RuntimeDispatchFunction;
+	inngestHandler?: DaemonRequestHandler;
+	useAppDefaultDispatch?: boolean;
 }
 
 export async function cleanupDaemonTestHarnesses() {
@@ -59,7 +66,9 @@ export async function readDaemonJson(response: Response) {
 	return response.json();
 }
 
-export async function createDaemonTestHarness() {
+export async function createDaemonTestHarness(
+	options: CreateDaemonTestHarnessOptions = {},
+) {
 	const root = await mkdtemp(join(tmpdir(), "inngest-orchestrator-daemon-"));
 	tempDirectories.push(root);
 
@@ -102,6 +111,17 @@ export async function createDaemonTestHarness() {
 			eventStreamBroker,
 			generateRunId: makeSequentialRunIdGenerator(),
 			now: () => "2026-03-11T12:00:00.000Z",
+			...(options.useAppDefaultDispatch
+				? {}
+				: {
+						dispatchRun: options.dispatchRun ?? (() => Promise.resolve()),
+					}),
+			inngestHandler:
+				options.inngestHandler ??
+				(() =>
+					new Response("ok", {
+						status: 200,
+					})),
 		}),
 	} satisfies DaemonTestHarness;
 }
@@ -110,6 +130,9 @@ export async function reopenDaemonTestHarness(
 	harness: DaemonTestHarness,
 	options?: {
 		now?: () => string;
+		dispatchRun?: RuntimeDispatchFunction;
+		inngestHandler?: DaemonRequestHandler;
+		useAppDefaultDispatch?: boolean;
 	},
 ) {
 	harness.store.close();
@@ -132,6 +155,17 @@ export async function reopenDaemonTestHarness(
 			eventStreamBroker,
 			generateRunId: makeSequentialRunIdGenerator(),
 			now: options?.now ?? (() => "2026-03-11T12:10:00.000Z"),
+			...(options?.useAppDefaultDispatch
+				? {}
+				: {
+						dispatchRun: options?.dispatchRun ?? (() => Promise.resolve()),
+					}),
+			inngestHandler:
+				options?.inngestHandler ??
+				(() =>
+					new Response("ok", {
+						status: 200,
+					})),
 		}),
 	} satisfies DaemonTestHarness;
 }

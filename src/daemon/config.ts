@@ -22,9 +22,15 @@ export function resolveDaemonRuntimeConfig(
 	return {
 		host: parseHost(env.INNGEST_ORCHESTRATOR_HOST),
 		port: parsePort(env.INNGEST_ORCHESTRATOR_PORT),
-		databasePath: env.INNGEST_ORCHESTRATOR_DB_PATH || DEFAULT_DATABASE_PATH,
+		databasePath: resolveDaemonDatabasePath(env),
 		idleTimeoutSeconds: DEFAULT_IDLE_TIMEOUT_SECONDS,
 	};
+}
+
+export function resolveDaemonDatabasePath(
+	env: NodeJS.ProcessEnv = process.env,
+) {
+	return env.INNGEST_ORCHESTRATOR_DB_PATH || DEFAULT_DATABASE_PATH;
 }
 
 function parseHost(input: string | undefined) {

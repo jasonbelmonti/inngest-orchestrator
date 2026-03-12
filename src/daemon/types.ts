@@ -36,3 +36,11 @@ export interface DaemonErrorBody {
 	issues?: RunLaunchIssue[];
 	runId?: string;
 }
+
+export type RuntimeDispatchFunction = (input: {
+	runId: string;
+}) => Promise<unknown> | unknown;
+
+export type DaemonRequestHandler = (
+	request: Request,
+) => Promise<Response> | Response;

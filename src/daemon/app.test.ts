@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import {
 	cleanupDaemonTestHarnesses,
 	createDaemonTestHarness,
@@ -7,6 +8,7 @@ import {
 	reopenDaemonTestHarness,
 	seedActiveStepRun,
 } from "./test-helpers.ts";
+import { makeWorkflow } from "../workflows/test-fixtures.ts";
 
 afterEach(async () => {
 	await cleanupDaemonTestHarnesses();
@@ -14,7 +16,12 @@ afterEach(async () => {
 
 describe("daemon app", () => {
 	test("POST /runs creates and auto-starts a persisted run", async () => {
-		const harness = await createDaemonTestHarness();
+		const dispatchedRunIds: string[] = [];
+		const harness = await createDaemonTestHarness({
+			dispatchRun: ({ runId }) => {
+				dispatchedRunIds.push(runId);
+			},
+		});
 
 		const response = await dispatchDaemonRequest(harness.app, "POST", "/runs", {
 			workflowId: "cross-repo-bugfix",
@@ -40,6 +47,88 @@ describe("daemon app", () => {
 		expect(harness.store.readRun("run-001")).toMatchObject({
 			status: "running",
 			latestEventSequence: 2,
+		});
+		expect(dispatchedRunIds).toEqual(["run-001"]);
+	});
+
+	test("POST /runs uses the stock local dispatch path without Inngest event credentials", async () => {
+		const harness = await createDaemonTestHarness({
+			useAppDefaultDispatch: true,
+		});
+		await Bun.write(
+			join(harness.configRoot, "workflows", "cross-repo-bugfix.json"),
+			`${JSON.stringify(
+				makeWorkflow({
+					nodes: makeWorkflow().nodes.map((node) =>
+						node.id === "typecheck"
+							? {
+									...node,
+									settings: {
+										...node.settings,
+										command: "printf 'shell-ok\\n'",
+									},
+								}
+							: node,
+					),
+				}),
+				null,
+				2,
+			)}\n`,
+		);
+
+		const response = await dispatchDaemonRequest(harness.app, "POST", "/runs", {
+			workflowId: "cross-repo-bugfix",
+			configRoot: harness.configRoot,
+			repoBindings: harness.repoBindings,
+		});
+
+		expect(response.status).toBe(201);
+		expect(await expectJson(response)).toMatchObject({
+			ok: true,
+			run: expect.objectContaining({
+				runId: "run-001",
+				status: "running",
+			}),
+		});
+
+		await waitFor(
+			() => harness.store.readRun("run-001")?.status === "completed",
+		);
+		expect(harness.store.readRun("run-001")).toMatchObject({
+			runId: "run-001",
+			status: "completed",
+		});
+	});
+
+	test("POST /runs fails the run closed when runtime dispatch throws", async () => {
+		const harness = await createDaemonTestHarness({
+			dispatchRun: () => {
+				throw new Error("dispatch offline");
+			},
+		});
+
+		const response = await dispatchDaemonRequest(harness.app, "POST", "/runs", {
+			workflowId: "cross-repo-bugfix",
+			configRoot: harness.configRoot,
+			repoBindings: harness.repoBindings,
+		});
+
+		expect(response.status).toBe(500);
+		expect(await expectJson(response)).toMatchObject({
+			ok: false,
+			error: {
+				code: "runtime_dispatch_failed",
+				message:
+					'Persisted run "run-001" could not be dispatched to the runtime.',
+				runId: "run-001",
+			},
+		});
+		expect(harness.store.readRun("run-001")).toMatchObject({
+			runId: "run-001",
+			status: "failed",
+			failureMessage:
+				'Persisted run "run-001" could not be dispatched to the runtime.',
+			latestEventSequence: 3,
 		});
 	});
 
@@ -122,6 +211,29 @@ describe("daemon app", () => {
 					latestEventSequence: 2,
 				},
 			],
+		});
+	});
+
+	test("GET /api/inngest delegates to the mounted Inngest handler", async () => {
+		const harness = await createDaemonTestHarness({
+			inngestHandler: (request) =>
+				new Response(JSON.stringify({ method: request.method }), {
+					status: 202,
+					headers: {
+						"content-type": "application/json; charset=utf-8",
+					},
+				}),
+		});
+
+		const response = await dispatchDaemonRequest(
+			harness.app,
+			"GET",
+			"/api/inngest",
+		);
+
+		expect(response.status).toBe(202);
+		expect(await readDaemonJson(response)).toEqual({
+			method: "GET",
 		});
 	});
 
@@ -1136,6 +1248,26 @@ describe("daemon app", () => {
 
 async function expectJson(response: Response) {
 	return readDaemonJson(response);
+}
+
+async function waitFor(
+	predicate: () => boolean,
+	options: {
+		attempts?: number;
+		delayMs?: number;
+	} = {},
+) {
+	const attempts = options.attempts ?? 40;
+	const delayMs = options.delayMs ?? 5;
+
+	for (let attempt = 0; attempt < attempts; attempt += 1) {
+		if (predicate()) {
+			return;
+		}
+		await Bun.sleep(delayMs);
+	}
+
+	throw new Error("Timed out waiting for asynchronous daemon state change.");
 }
 
 async function readSseEvents(response: Response, expectedCount: number) {

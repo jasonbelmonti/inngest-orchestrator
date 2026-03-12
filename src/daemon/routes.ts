@@ -29,6 +29,8 @@ export function createDaemonFetchHandler(options: DaemonHandlerOptions) {
 						code: "method_not_allowed",
 						message: `Method "${request.method}" is not allowed for "/runs".`,
 					});
+				case "inngest-handler":
+					return await options.inngestHandler(request);
 				case "run-detail":
 					if (request.method !== "GET") {
 						throw new DaemonHttpError({

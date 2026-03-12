@@ -59,7 +59,8 @@ export interface RuntimeShellOutputPreview {
 	truncated: boolean;
 }
 
-export interface RuntimeShellCheckArtifactMetadata {
+export interface RuntimeShellCheckArtifactMetadata
+	extends Record<string, unknown> {
 	schemaVersion: 1;
 	command: string;
 	exitCode: number;

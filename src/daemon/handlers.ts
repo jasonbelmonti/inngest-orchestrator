@@ -7,12 +7,15 @@ import { parseRunControlRequest, readJsonBody } from "./parsing.ts";
 import { successResponse } from "./responses.ts";
 import { summarizeRun } from "./run-mappers.ts";
 import type { RunEventStreamBroker } from "./sse.ts";
+import type { DaemonRequestHandler, RuntimeDispatchFunction } from "./types.ts";
 
 export interface DaemonHandlerOptions {
 	store: SQLiteRunStore;
 	eventStreamBroker: RunEventStreamBroker;
 	generateRunId: () => string;
 	now: () => string;
+	dispatchRun: RuntimeDispatchFunction;
+	inngestHandler: DaemonRequestHandler;
 }
 
 export async function handleCreateRun(
@@ -36,6 +39,29 @@ export async function handleCreateRun(
 		runId,
 		[1, 2],
 	);
+
+	try {
+		await options.dispatchRun({ runId });
+	} catch (error) {
+		const failedRun = options.store.appendEvent({
+			runId,
+			event: {
+				type: "run.failed",
+				occurredAt: options.now(),
+				message: `Persisted run "${runId}" could not be dispatched to the runtime.`,
+			},
+		});
+		publishEventSequences(options.store, options.eventStreamBroker, runId, [
+			failedRun.latestEventSequence,
+		]);
+		throw new DaemonHttpError({
+			status: 500,
+			code: "runtime_dispatch_failed",
+			message: `Persisted run "${runId}" could not be dispatched to the runtime.`,
+			runId,
+			cause: error,
+		});
+	}
 
 	return successResponse(201, { run });
 }

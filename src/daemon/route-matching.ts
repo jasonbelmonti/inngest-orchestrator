@@ -2,6 +2,7 @@ import { DaemonHttpError } from "./errors.ts";
 
 export type DaemonRouteMatch =
 	| { kind: "runs" }
+	| { kind: "inngest-handler" }
 	| { kind: "run-detail"; runId: string }
 	| { kind: "run-control"; runId: string }
 	| { kind: "run-events"; runId: string }
@@ -19,6 +20,14 @@ export function matchDaemonRoute(pathname: string): DaemonRouteMatch {
 
 	if (segments.length === 1 && segments[0] === "runs") {
 		return { kind: "runs" };
+	}
+
+	if (
+		segments.length === 2 &&
+		segments[0] === "api" &&
+		segments[1] === "inngest"
+	) {
+		return { kind: "inngest-handler" };
 	}
 
 	if (segments.length === 2 && segments[0] === "runs" && runId) {
