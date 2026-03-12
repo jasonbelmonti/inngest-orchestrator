@@ -44,6 +44,23 @@ Default daemon bind:
 - `127.0.0.1:3017`
 - SQLite at `.local/inngest-orchestrator.sqlite`
 
+Manual SSE restart check:
+
+```bash
+curl -N http://127.0.0.1:3017/runs/run-001/events
+# disconnect the stream, restart bun ./src/daemon.ts, then reconnect with Last-Event-ID: 1
+curl -N http://127.0.0.1:3017/runs/run-001/events \
+  -H 'Last-Event-ID: 1'
+curl -s -X POST http://127.0.0.1:3017/runs/run-001/control \
+  -H 'content-type: application/json' \
+  -d '{"action":"cancel","reason":"operator stopped run"}'
+```
+
+Restart recovery for SSE is replay-based:
+
+- open streams do not survive daemon restart
+- reconnect with `Last-Event-ID` to recover persisted events and continue live delivery
+
 CI commands:
 
 ```bash

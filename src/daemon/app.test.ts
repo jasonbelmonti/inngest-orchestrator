@@ -1,13 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createDaemonApp } from "./app.ts";
-import { SQLiteRunStore } from "../runs/store/sqlite-store.ts";
 import {
-	attachOpenStore,
 	cleanupDaemonTestHarnesses,
 	createDaemonTestHarness,
-	detachOpenStore,
 	dispatchDaemonRequest,
 	readDaemonJson,
+	reopenDaemonTestHarness,
 	seedActiveStepRun,
 } from "./test-helpers.ts";
 
@@ -441,6 +438,113 @@ describe("daemon app", () => {
 				runId: "run-001",
 			}),
 		});
+	});
+
+	test("GET /runs/:id/events reconnects after daemon restart using persisted replay", async () => {
+		const harness = await createDaemonTestHarness();
+		await seedActiveStepRun(harness, "run-restart");
+
+		const initialStream = await dispatchDaemonRequest(
+			harness.app,
+			"GET",
+			"/runs/run-restart/events",
+		);
+		const initialEvents = readSseEvents(initialStream, 1);
+
+		const requestApprovalResponse = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-restart/control",
+			{
+				action: "request_approval",
+				approvalId: "approval-restart",
+				stepId: "implement",
+				message: "Ship it?",
+			},
+		);
+		expect(requestApprovalResponse.status).toBe(200);
+
+		await expect(initialEvents).resolves.toEqual([
+			{
+				id: "4",
+				event: "approval.requested",
+				data: {
+					runId: "run-restart",
+					sequence: 4,
+					type: "approval.requested",
+					occurredAt: "2026-03-11T12:00:00.000Z",
+					approvalId: "approval-restart",
+					stepId: "implement",
+					message: "Ship it?",
+				},
+			},
+		]);
+
+		const restartedHarness = await reopenDaemonTestHarness(harness, {
+			now: () => "2026-03-11T12:10:00.000Z",
+		});
+
+		const resolveApprovalResponse = await dispatchDaemonRequest(
+			restartedHarness.app,
+			"POST",
+			"/runs/run-restart/control",
+			{
+				action: "resolve_approval",
+				approvalId: "approval-restart",
+				decision: "approved",
+				comment: "Looks good after restart.",
+			},
+		);
+		expect(resolveApprovalResponse.status).toBe(200);
+
+		const replayedStream = await restartedHarness.app.fetch(
+			new Request("http://daemon.test/runs/run-restart/events", {
+				method: "GET",
+				headers: {
+					"last-event-id": "4",
+				},
+			}),
+		);
+		expect(replayedStream.status).toBe(200);
+		const resumedEvents = readSseEvents(replayedStream, 2);
+
+		const cancelResponse = await dispatchDaemonRequest(
+			restartedHarness.app,
+			"POST",
+			"/runs/run-restart/control",
+			{
+				action: "cancel",
+				reason: "operator stopped run after restart",
+			},
+		);
+		expect(cancelResponse.status).toBe(200);
+
+		await expect(resumedEvents).resolves.toEqual([
+			{
+				id: "5",
+				event: "approval.resolved",
+				data: {
+					runId: "run-restart",
+					sequence: 5,
+					type: "approval.resolved",
+					occurredAt: "2026-03-11T12:10:00.000Z",
+					approvalId: "approval-restart",
+					decision: "approved",
+					comment: "Looks good after restart.",
+				},
+			},
+			{
+				id: "6",
+				event: "run.cancelled",
+				data: {
+					runId: "run-restart",
+					sequence: 6,
+					type: "run.cancelled",
+					occurredAt: "2026-03-11T12:10:00.000Z",
+					reason: "operator stopped run after restart",
+				},
+			},
+		]);
 	});
 
 	test("SSE subscriptions clean up on disconnect", async () => {
@@ -987,22 +1091,12 @@ describe("daemon app", () => {
 			action: "cancel",
 			reason: "done here",
 		});
-
-		harness.store.close();
-		detachOpenStore(harness.store);
-
-		const reopenedStore = SQLiteRunStore.open({
-			databasePath: harness.databasePath,
-		});
-		attachOpenStore(reopenedStore);
-		const reopenedApp = createDaemonApp({
-			store: reopenedStore,
-			generateRunId: () => "unused",
+		const reopenedHarness = await reopenDaemonTestHarness(harness, {
 			now: () => "2026-03-11T12:10:00.000Z",
 		});
 
 		const listResponse = await dispatchDaemonRequest(
-			reopenedApp,
+			reopenedHarness.app,
 			"GET",
 			"/runs",
 		);
@@ -1024,7 +1118,7 @@ describe("daemon app", () => {
 		});
 
 		const detailResponse = await dispatchDaemonRequest(
-			reopenedApp,
+			reopenedHarness.app,
 			"GET",
 			"/runs/run-001",
 		);
