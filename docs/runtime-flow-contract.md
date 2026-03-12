@@ -1,5 +1,25 @@
 # Runtime Flow Contract
 
+## BEL-373 persisted run dispatch
+
+BEL-373 introduces the first runtime dispatch event consumed by the Inngest-backed worker:
+
+```ts
+interface RuntimeDispatchEvent {
+  name: "orchestrator/run.requested";
+  data: {
+    runId: string;
+  };
+}
+```
+
+The runtime worker loads the persisted run from SQLite, re-reads the workflow from the launch
+config root, recompiles the BEL-366 execution plan against the pinned workflow snapshot, and
+applies all durable state changes through the run store.
+
+In BEL-373, the executor does not attempt mid-run resume. If a run is already partially advanced
+and still marked `running`, the executor fails it closed rather than guessing how to continue.
+
 ## BEL-372 shell-check subset
 
 `check.shell` executes as a deterministic local shell command against the resolved repo target for
@@ -68,3 +88,26 @@ interface RuntimeShellCheckArtifactFile {
   stderr: { text: string; byteLength: number };
 }
 ```
+
+## BEL-373 durable event sequence
+
+For the supported BEL-366 subset, runtime execution mutates the run store in these sequences:
+
+- `task.agent` stub success:
+  - `step.started`
+  - `step.completed`
+- `check.shell` success:
+  - `step.started`
+  - `artifact.created`
+  - `step.completed`
+- `check.shell` non-zero exit:
+  - `step.started`
+  - `artifact.created`
+  - `step.failed`
+  - `run.failed`
+- terminal success:
+  - `step.started`
+  - `step.completed`
+  - `run.completed`
+
+The runtime executor does not bypass the run store for any step or artifact state in this slice.
