@@ -20,8 +20,11 @@ as `status: "failed"` but still persist an artifact file for later run-store map
 Shell-check artifacts are stored under the targeted repo using a deterministic repo-relative path:
 
 ```txt
-.inngest-orchestrator/artifacts/runs/<runId>/steps/<stepId>/shell-check.json
+.inngest-orchestrator/artifacts/runs/<encoded-runId>/steps/<encoded-stepId>/shell-check.json
 ```
+
+`runId` and `stepId` are path-safe encoded before they are inserted into the artifact path, so
+traversal-shaped ids cannot escape the targeted repo root.
 
 ### Result payload
 

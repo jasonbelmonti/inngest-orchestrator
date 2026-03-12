@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { executeShellCheck } from "./shell-check.ts";
 import type { RuntimeExecutionPlanStep } from "./types.ts";
 
@@ -142,6 +142,35 @@ describe("executeShellCheck", () => {
 				byteLength: Buffer.byteLength("stderr-line\n"),
 			},
 		});
+	});
+
+	test("encodes traversal-shaped step ids so artifact writes stay inside the repo root", async () => {
+		const repoPath = await createRepoRoot();
+		const traversalStepId = "../../../../../../escape";
+
+		const result = await executeShellCheck({
+			runId: "run-003",
+			step: makeShellCheckStep({
+				command: "printf 'safe\\n'",
+				resolvedPath: repoPath,
+				stepId: traversalStepId,
+			}),
+		});
+
+		expect(result.artifact.relativePath).toBe(
+			".inngest-orchestrator/artifacts/runs/run-003/steps/%2E%2E%2F%2E%2E%2F%2E%2E%2F%2E%2E%2F%2E%2E%2F%2E%2E%2Fescape/shell-check.json",
+		);
+
+		const artifactAbsolutePath = join(repoPath, result.artifact.relativePath);
+		const relativeToRepoRoot = relative(repoPath, artifactAbsolutePath);
+		expect(relativeToRepoRoot.startsWith("..")).toBe(false);
+		expect(isAbsolute(relativeToRepoRoot)).toBe(false);
+		expect(await Bun.file(artifactAbsolutePath).exists()).toBe(true);
+		expect(
+			await Bun.file(
+				join(repoPath, "..", "escape", "shell-check.json"),
+			).exists(),
+		).toBe(false);
 	});
 });
 

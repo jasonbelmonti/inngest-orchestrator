@@ -1,5 +1,5 @@
 import { mkdir } from "node:fs/promises";
-import { dirname, join, posix } from "node:path";
+import { dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import type {
 	RuntimeShellCheckArtifactFile,
 	RuntimeShellCheckArtifactMetadata,
@@ -11,6 +11,7 @@ const ARTIFACT_ROOT_DIRECTORY = ".inngest-orchestrator";
 const SHELL_CHECK_ARTIFACT_KIND = "shell-check-report";
 const PREVIEW_BYTE_LIMIT = 2048;
 
+const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
 export function createShellCheckArtifactRelativePath(input: {
@@ -21,9 +22,9 @@ export function createShellCheckArtifactRelativePath(input: {
 		ARTIFACT_ROOT_DIRECTORY,
 		"artifacts",
 		"runs",
-		input.runId,
+		encodeArtifactPathSegment(input.runId),
 		"steps",
-		input.stepId,
+		encodeArtifactPathSegment(input.stepId),
 		"shell-check.json",
 	);
 }
@@ -54,7 +55,14 @@ export async function writeShellCheckArtifact(input: {
 		runId: input.runId,
 		stepId: input.stepId,
 	});
-	const absolutePath = join(input.repoPath, relativePath);
+	const repoRoot = resolve(input.repoPath);
+	const absolutePath = resolve(repoRoot, relativePath);
+	assertArtifactPathInsideRepo({
+		repoRoot,
+		absolutePath,
+		runId: input.runId,
+		stepId: input.stepId,
+	});
 	const artifactFile: RuntimeShellCheckArtifactFile = {
 		schemaVersion: 1,
 		runId: input.runId,
@@ -99,4 +107,51 @@ export async function writeShellCheckArtifact(input: {
 
 export function toByteArray(value: ArrayBuffer) {
 	return new Uint8Array(value);
+}
+
+function encodeArtifactPathSegment(value: string) {
+	const bytes = textEncoder.encode(value);
+	let encoded = "";
+
+	for (const byte of bytes) {
+		if (isSafeArtifactPathByte(byte)) {
+			encoded += String.fromCharCode(byte);
+			continue;
+		}
+
+		encoded += `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+	}
+
+	return encoded;
+}
+
+function isSafeArtifactPathByte(byte: number) {
+	return (
+		(byte >= 48 && byte <= 57) ||
+		(byte >= 65 && byte <= 90) ||
+		(byte >= 97 && byte <= 122) ||
+		byte === 45 ||
+		byte === 95
+	);
+}
+
+function assertArtifactPathInsideRepo(input: {
+	repoRoot: string;
+	absolutePath: string;
+	runId: string;
+	stepId: string;
+}) {
+	const artifactPathRelativeToRepo = relative(
+		input.repoRoot,
+		input.absolutePath,
+	);
+	if (
+		artifactPathRelativeToRepo === "" ||
+		artifactPathRelativeToRepo.startsWith("..") ||
+		isAbsolute(artifactPathRelativeToRepo)
+	) {
+		throw new Error(
+			`Shell-check artifact path escaped the repo root for run "${input.runId}" step "${input.stepId}".`,
+		);
+	}
 }
