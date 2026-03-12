@@ -52,3 +52,51 @@ export interface RuntimeTargetResolutionInput {
 	target: CompiledWorkflowExecutionTarget;
 	repoBindings: ResolvedRunLaunchRequest["repoBindings"];
 }
+
+export interface RuntimeShellOutputPreview {
+	preview: string;
+	byteLength: number;
+	truncated: boolean;
+}
+
+export interface RuntimeShellCheckArtifactMetadata {
+	schemaVersion: 1;
+	command: string;
+	exitCode: number;
+	stdout: RuntimeShellOutputPreview;
+	stderr: RuntimeShellOutputPreview;
+}
+
+export interface RuntimeShellCheckArtifactReference {
+	kind: "shell-check-report";
+	repoId: string;
+	relativePath: string;
+	metadata: RuntimeShellCheckArtifactMetadata;
+}
+
+export interface RuntimeShellCheckArtifactFile {
+	schemaVersion: 1;
+	runId: string;
+	stepId: string;
+	repoId: string;
+	command: string;
+	exitCode: number;
+	status: "completed" | "failed";
+	stdout: {
+		text: string;
+		byteLength: number;
+	};
+	stderr: {
+		text: string;
+		byteLength: number;
+	};
+}
+
+export interface RuntimeShellCheckResult {
+	stepId: string;
+	repoId: string;
+	command: string;
+	exitCode: number;
+	status: "completed" | "failed";
+	artifact: RuntimeShellCheckArtifactReference;
+}
