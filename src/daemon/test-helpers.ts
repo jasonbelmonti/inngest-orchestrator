@@ -14,6 +14,18 @@ import { RunEventStreamBroker } from "./sse.ts";
 const tempDirectories: string[] = [];
 const openStores: SQLiteRunStore[] = [];
 
+export interface DaemonTestHarness {
+	configRoot: string;
+	databasePath: string;
+	repoBindings: {
+		"agent-console": string;
+		"inngest-orchestrator": string;
+	};
+	store: SQLiteRunStore;
+	eventStreamBroker: RunEventStreamBroker;
+	app: ReturnType<typeof createDaemonApp>;
+}
+
 export async function cleanupDaemonTestHarnesses() {
 	for (const store of openStores.splice(0)) {
 		store.close();
@@ -91,11 +103,41 @@ export async function createDaemonTestHarness() {
 			generateRunId: makeSequentialRunIdGenerator(),
 			now: () => "2026-03-11T12:00:00.000Z",
 		}),
-	};
+	} satisfies DaemonTestHarness;
+}
+
+export async function reopenDaemonTestHarness(
+	harness: DaemonTestHarness,
+	options?: {
+		now?: () => string;
+	},
+) {
+	harness.store.close();
+	detachOpenStore(harness.store);
+
+	const reopenedStore = SQLiteRunStore.open({
+		databasePath: harness.databasePath,
+	});
+	attachOpenStore(reopenedStore);
+	const eventStreamBroker = new RunEventStreamBroker({ keepAliveMs: 60_000 });
+
+	return {
+		configRoot: harness.configRoot,
+		databasePath: harness.databasePath,
+		repoBindings: harness.repoBindings,
+		store: reopenedStore,
+		eventStreamBroker,
+		app: createDaemonApp({
+			store: reopenedStore,
+			eventStreamBroker,
+			generateRunId: makeSequentialRunIdGenerator(),
+			now: options?.now ?? (() => "2026-03-11T12:10:00.000Z"),
+		}),
+	} satisfies DaemonTestHarness;
 }
 
 export async function seedActiveStepRun(
-	input: Awaited<ReturnType<typeof createDaemonTestHarness>>,
+	input: DaemonTestHarness,
 	runId: string,
 ) {
 	const launch = await resolveRunLaunchRequest({

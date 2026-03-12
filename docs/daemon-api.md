@@ -175,9 +175,13 @@ Replay semantics:
 
 - clients can reconnect with `Last-Event-ID: <sequence>`
 - the daemon replays persisted events with `sequence > Last-Event-ID` before switching to live delivery
+- replayed and live events are delivered in ascending persisted sequence order on the same stream
 - `Last-Event-ID` must be a non-negative integer
 - `Last-Event-ID` cannot be greater than the latest persisted event sequence for the run
 - when `Last-Event-ID` equals the latest persisted event sequence, the stream resumes in live-only mode
+- daemon restarts do not preserve in-memory subscriptions; clients must reconnect and send the last
+  seen persisted sequence to recover visibility
+- restart recovery is backed by persisted SQLite run events, not broker memory
 
 ## POST /runs/:id/control
 
@@ -242,8 +246,73 @@ Validation notes:
 
 Not included yet:
 
-- no SSE restart recovery guarantees beyond persisted replay on reconnect
+- no persisted subscriber sessions across daemon restarts
+- no replay cursor storage beyond the client-provided `Last-Event-ID`
 - no Inngest workflow execution
 - no managed provider sessions
 
 Those arrive in later slices.
+
+## Manual Verification
+
+1. Start the daemon:
+
+   ```bash
+   bun ./src/daemon.ts
+   ```
+
+2. Create a run:
+
+   ```bash
+   curl -s -X POST http://127.0.0.1:3017/runs \
+     -H 'content-type: application/json' \
+     -d '{
+       "workflowId": "cross-repo-bugfix",
+       "configRoot": "'"$PWD"'/examples/config-root",
+       "repoBindings": {
+         "agent-console": "'"$PWD"'",
+         "inngest-orchestrator": "'"$PWD"'"
+       }
+     }'
+   ```
+
+3. Read the current persisted sequence from the run detail. For a freshly created run it will
+   usually be `2` after `run.created` and `run.started`:
+
+   ```bash
+   curl -s http://127.0.0.1:3017/runs/run-001
+   ```
+
+4. Open an SSE stream in another shell, then disconnect it before any new control event is sent:
+
+   ```bash
+   curl -N http://127.0.0.1:3017/runs/run-001/events
+   ```
+
+5. Stop the first `curl`, then stop the daemon:
+
+   ```bash
+   # stop bun ./src/daemon.ts after disconnecting the stream
+   ```
+
+6. Restart the daemon and reconnect with `Last-Event-ID: 1` so the daemon must replay persisted
+   event `2` before switching to live delivery:
+
+   ```bash
+   curl -N http://127.0.0.1:3017/runs/run-001/events \
+     -H 'Last-Event-ID: 1'
+   ```
+
+7. From another shell, trigger a new control event:
+
+   ```bash
+   curl -s -X POST http://127.0.0.1:3017/runs/run-001/control \
+     -H 'content-type: application/json' \
+     -d '{"action":"cancel","reason":"operator stopped run"}'
+   ```
+
+8. Confirm that:
+   - the reconnect succeeds after daemon restart
+   - the stream first replays persisted `run.started` as `id: 2`
+   - the new control event appears afterward as live event `id: 3`
+   - list/detail endpoints still show the same run state after restart
