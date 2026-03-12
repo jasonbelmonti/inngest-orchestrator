@@ -53,7 +53,11 @@ export async function executePersistedRun(input: ExecutePersistedRunOptions) {
 		for (const step of plan.steps) {
 			run = await executeRuntimeStep(initialRun.runId, step, input.store, now);
 
-			if (run.status === "failed" || run.status === "completed") {
+			if (
+				run.status === "failed" ||
+				run.status === "completed" ||
+				run.status === "waiting_for_approval"
+			) {
 				return run;
 			}
 		}
@@ -82,6 +86,8 @@ async function executeRuntimeStep(
 			return executeTaskStep({ runId, step, store, now });
 		case "check":
 			return executeCheckStep({ runId, step, store, now });
+		case "approval":
+			return executeApprovalStep({ runId, step, store, now });
 		case "terminal":
 			return executeTerminalStep({ runId, step, store, now });
 	}
@@ -172,6 +178,33 @@ async function executeCheckStep(input: {
 			type: "run.failed",
 			occurredAt: input.now(),
 			message,
+		},
+	});
+}
+
+function executeApprovalStep(input: {
+	runId: string;
+	step: Extract<RuntimeExecutionPlanStep, { kind: "approval" }>;
+	store: SQLiteRunStore;
+	now: () => string;
+}) {
+	input.store.appendEvent({
+		runId: input.runId,
+		event: {
+			type: "step.started",
+			occurredAt: input.now(),
+			stepId: input.step.id,
+		},
+	});
+
+	return input.store.appendEvent({
+		runId: input.runId,
+		event: {
+			type: "approval.requested",
+			occurredAt: input.now(),
+			approvalId: input.step.approvalId,
+			stepId: input.step.id,
+			...(input.step.message !== null ? { message: input.step.message } : {}),
 		},
 	});
 }

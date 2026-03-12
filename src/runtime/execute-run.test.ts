@@ -199,9 +199,59 @@ describe("executePersistedRun", () => {
 			"run.failed",
 		]);
 	});
+
+	test("pauses durably when execution reaches an approval gate", async () => {
+		const fixture = await createRuntimeFixture({
+			command: "printf 'unused\\n'",
+			includeApprovalGate: true,
+		});
+		const store = SQLiteRunStore.open();
+		openedStores.push(store);
+		const clock = createDeterministicClock();
+
+		store.createStartedRun({
+			runId: "run-004",
+			createdAt: clock(),
+			startedAt: clock(),
+			launch: fixture.launch,
+		});
+
+		const run = await executePersistedRun({
+			runId: "run-004",
+			store,
+			now: clock,
+		});
+
+		expect(run.status).toBe("waiting_for_approval");
+		expect(run.currentStepId).toBe("approve");
+		expect(run.failureMessage).toBeNull();
+		expect(run.approvals).toEqual([
+			{
+				approvalId: "approval:approve",
+				runId: "run-004",
+				stepId: "approve",
+				status: "pending",
+				requestedAt: "2026-03-12T18:00:06.000Z",
+				respondedAt: null,
+				decision: null,
+				message: "Ship it?",
+			},
+		]);
+		expect(store.listEvents("run-004").map((event) => event.type)).toEqual([
+			"run.created",
+			"run.started",
+			"step.started",
+			"step.completed",
+			"step.started",
+			"approval.requested",
+		]);
+	});
 });
 
-async function createRuntimeFixture(input: { command: string }) {
+async function createRuntimeFixture(input: {
+	command: string;
+	includeApprovalGate?: boolean;
+}) {
 	const root = await mkdtemp(join(tmpdir(), "runtime-executor-"));
 	createdRoots.push(root);
 
@@ -219,23 +269,7 @@ async function createRuntimeFixture(input: { command: string }) {
 	);
 	await Bun.write(
 		join(configRoot, "workflows", "cross-repo-bugfix.json"),
-		`${JSON.stringify(
-			makeWorkflow({
-				nodes: makeWorkflow().nodes.map((node) =>
-					node.id === "typecheck"
-						? {
-								...node,
-								settings: {
-									...node.settings,
-									command: input.command,
-								},
-							}
-						: node,
-				),
-			}),
-			null,
-			2,
-		)}\n`,
+		`${JSON.stringify(makeRuntimeWorkflowFixture(input), null, 2)}\n`,
 	);
 
 	const launch = await resolveRunLaunchRequest({
@@ -253,6 +287,74 @@ async function createRuntimeFixture(input: { command: string }) {
 		agentConsolePath,
 		orchestratorPath,
 	};
+}
+
+function makeRuntimeWorkflowFixture(input: {
+	command: string;
+	includeApprovalGate?: boolean;
+}) {
+	const baseWorkflow = makeWorkflow();
+	const nodes = baseWorkflow.nodes.map((node) =>
+		node.id === "typecheck"
+			? {
+					...node,
+					settings: {
+						...node.settings,
+						command: input.command,
+					},
+				}
+			: node,
+	);
+
+	if (!input.includeApprovalGate) {
+		return makeWorkflow({ nodes });
+	}
+
+	return makeWorkflow({
+		nodes: nodes.flatMap((node) =>
+			node.id === "typecheck"
+				? [
+						{
+							id: "approve",
+							kind: "gate" as const,
+							label: "Approve Changes",
+							phaseId: "output",
+							settings: {
+								template: "gate.approval",
+								message: "Ship it?",
+							},
+						},
+						node,
+					]
+				: [node],
+		),
+		edges: [
+			{
+				id: "edge-trigger-implement",
+				sourceId: "trigger",
+				targetId: "implement",
+				condition: "always" as const,
+			},
+			{
+				id: "edge-implement-approve",
+				sourceId: "implement",
+				targetId: "approve",
+				condition: "on_success" as const,
+			},
+			{
+				id: "edge-approve-typecheck",
+				sourceId: "approve",
+				targetId: "typecheck",
+				condition: "on_approval" as const,
+			},
+			{
+				id: "edge-typecheck-terminal",
+				sourceId: "typecheck",
+				targetId: "terminal",
+				condition: "on_success" as const,
+			},
+		],
+	});
 }
 
 function createDeterministicClock() {

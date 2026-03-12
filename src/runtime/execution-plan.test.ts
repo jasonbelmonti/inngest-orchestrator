@@ -60,13 +60,101 @@ describe("createRuntimeExecutionPlan", () => {
 		});
 	});
 
-	test("rejects unsupported BEL-371 templates", async () => {
+	test("compiles approval gates into the runtime plan with deterministic pause metadata", () => {
+		const baseNodes = makeWorkflow().nodes;
+		const triggerNode = baseNodes.find((node) => node.id === "trigger");
+		const implementNode = baseNodes.find((node) => node.id === "implement");
+		const typecheckNode = baseNodes.find((node) => node.id === "typecheck");
+		const terminalNode = baseNodes.find((node) => node.id === "terminal");
+		if (!triggerNode || !implementNode || !typecheckNode || !terminalNode) {
+			throw new Error("Invalid workflow fixture for BEL-375 approval test.");
+		}
+
+		const plan = createRuntimeExecutionPlan({
+			run: {
+				runId: "run-approval",
+				launch: makeResolvedLaunch(),
+			},
+			workflowRecord: makeWorkflowRecord(
+				makeWorkflow({
+					nodes: [
+						triggerNode,
+						implementNode,
+						{
+							id: "approve",
+							kind: "gate",
+							label: "Approve Changes",
+							phaseId: "output",
+							settings: {
+								template: "gate.approval",
+								message: "Ship it?",
+							},
+						},
+						typecheckNode,
+						terminalNode,
+					],
+					edges: [
+						{
+							id: "edge-trigger-implement",
+							sourceId: "trigger",
+							targetId: "implement",
+							condition: "always",
+						},
+						{
+							id: "edge-implement-approve",
+							sourceId: "implement",
+							targetId: "approve",
+							condition: "on_success",
+						},
+						{
+							id: "edge-approve-typecheck",
+							sourceId: "approve",
+							targetId: "typecheck",
+							condition: "on_approval",
+						},
+						{
+							id: "edge-typecheck-terminal",
+							sourceId: "typecheck",
+							targetId: "terminal",
+							condition: "on_success",
+						},
+					],
+				}),
+			),
+		});
+
+		expect(plan.steps).toEqual([
+			expect.objectContaining({
+				id: "implement",
+				kind: "task",
+			}),
+			{
+				id: "approve",
+				kind: "approval",
+				template: "gate.approval",
+				label: "Approve Changes",
+				approvalId: "approval:approve",
+				message: "Ship it?",
+				rejectionOutcome: "fail",
+			},
+			expect.objectContaining({
+				id: "typecheck",
+				kind: "check",
+			}),
+			expect.objectContaining({
+				id: "terminal",
+				kind: "terminal",
+			}),
+		]);
+	});
+
+	test("rejects unsupported runtime templates", () => {
 		const baseNodes = makeWorkflow().nodes;
 		const triggerNode = baseNodes.find((node) => node.id === "trigger");
 		const implementNode = baseNodes.find((node) => node.id === "implement");
 		const terminalNode = baseNodes.find((node) => node.id === "terminal");
 		if (!triggerNode || !implementNode || !terminalNode) {
-			throw new Error("Invalid workflow fixture for BEL-371 test.");
+			throw new Error("Invalid workflow fixture for runtime template test.");
 		}
 
 		const workflow = makeWorkflow({
@@ -74,11 +162,12 @@ describe("createRuntimeExecutionPlan", () => {
 				triggerNode,
 				implementNode,
 				{
-					id: "approve",
-					kind: "gate",
-					label: "Approve",
+					id: "capture",
+					kind: "artifact",
+					label: "Capture Report",
 					phaseId: "output",
-					settings: { template: "gate.approval" },
+					target: { repoId: "agent-console" },
+					settings: { template: "artifact.capture" },
 				},
 				terminalNode,
 			],
@@ -90,16 +179,16 @@ describe("createRuntimeExecutionPlan", () => {
 					condition: "always",
 				},
 				{
-					id: "edge-implement-approve",
+					id: "edge-implement-capture",
 					sourceId: "implement",
-					targetId: "approve",
+					targetId: "capture",
 					condition: "on_success",
 				},
 				{
-					id: "edge-approve-terminal",
-					sourceId: "approve",
+					id: "edge-capture-terminal",
+					sourceId: "capture",
 					targetId: "terminal",
-					condition: "on_approval",
+					condition: "on_success",
 				},
 			],
 		});
