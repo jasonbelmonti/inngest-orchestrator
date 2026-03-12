@@ -4,7 +4,11 @@ import {
 	makeRepositoryCatalog,
 	makeWorkflow,
 } from "../workflows/test-fixtures.ts";
-import { createRuntimeExecutionPlan } from "./execution-plan.ts";
+import { compileWorkflowDocument } from "../workflows/compiler.ts";
+import {
+	createRuntimeExecutionPlan,
+	createRuntimeExecutionPlanFromCompiledWorkflow,
+} from "./execution-plan.ts";
 import { RuntimePlanError } from "./errors.ts";
 
 describe("createRuntimeExecutionPlan", () => {
@@ -176,6 +180,53 @@ describe("createRuntimeExecutionPlan", () => {
 				workflowRecord: makeWorkflowRecord(makeWorkflow()),
 			}),
 		).toThrow(RuntimePlanError);
+	});
+
+	test("rejects terminal nodes with outgoing runtime transitions", () => {
+		const compiledWorkflow = compileWorkflowDocument({
+			document: makeWorkflow(),
+			repoCatalog: makeRepositoryCatalog(),
+		});
+		compiledWorkflow.nodes.push({
+			id: "post-terminal-task",
+			kind: "task",
+			template: "task.agent",
+			label: "Post Terminal Task",
+			phaseId: "output",
+			target: {
+				repoId: "agent-console",
+				worktreeStrategy: "shared",
+			},
+			settings: {
+				template: "task.agent",
+				prompt: "This should never run.",
+			},
+		});
+		compiledWorkflow.edges.push({
+			id: "edge-terminal-post-terminal-task",
+			sourceId: "terminal",
+			targetId: "post-terminal-task",
+			condition: "on_success",
+		});
+
+		expect(() =>
+			createRuntimeExecutionPlanFromCompiledWorkflow({
+				run: {
+					runId: "run-006",
+					launch: makeResolvedLaunch(),
+				},
+				compiledWorkflow,
+			}),
+		).toThrow(
+			expect.objectContaining({
+				code: "invalid_runtime_execution_plan",
+				issues: expect.arrayContaining([
+					expect.objectContaining({
+						code: "unexpected_terminal_transition",
+					}),
+				]),
+			}),
+		);
 	});
 
 	test("rejects workflow snapshot mismatches before planning", () => {
