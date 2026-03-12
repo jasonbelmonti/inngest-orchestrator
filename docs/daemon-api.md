@@ -60,8 +60,8 @@ Error notes:
 ## POST /runs
 
 Creates a run from the existing launch contract, persists it, then immediately appends
-`run.started`. After those durable events are stored, the daemon dispatches the persisted run to
-the mounted Inngest runtime.
+`run.started`. After those durable events are stored, the stock local daemon queues persisted run
+execution in-process so `POST /runs` stays runnable without external Inngest event credentials.
 
 The request must use `Content-Type: application/json`.
 
@@ -154,7 +154,9 @@ Unknown runs return `404` with `code: "run_store_not_found"`.
 ## /api/inngest
 
 The daemon mounts the local Inngest handler at `/api/inngest` so the Inngest dev server or
-runtime can invoke persisted run execution without a separate HTTP process.
+runtime can invoke persisted run execution without a separate HTTP process. The stock local
+`POST /runs` path does not require this endpoint or `INNGEST_EVENT_KEY`; it uses in-process
+dispatch by default in BEL-373.
 
 ## GET /runs/:id/events
 

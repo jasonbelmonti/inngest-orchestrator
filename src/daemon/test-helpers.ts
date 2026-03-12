@@ -30,6 +30,7 @@ export interface DaemonTestHarness {
 interface CreateDaemonTestHarnessOptions {
 	dispatchRun?: RuntimeDispatchFunction;
 	inngestHandler?: DaemonRequestHandler;
+	useAppDefaultDispatch?: boolean;
 }
 
 export async function cleanupDaemonTestHarnesses() {
@@ -110,7 +111,11 @@ export async function createDaemonTestHarness(
 			eventStreamBroker,
 			generateRunId: makeSequentialRunIdGenerator(),
 			now: () => "2026-03-11T12:00:00.000Z",
-			dispatchRun: options.dispatchRun ?? (() => Promise.resolve()),
+			...(options.useAppDefaultDispatch
+				? {}
+				: {
+						dispatchRun: options.dispatchRun ?? (() => Promise.resolve()),
+					}),
 			inngestHandler:
 				options.inngestHandler ??
 				(() =>
@@ -127,6 +132,7 @@ export async function reopenDaemonTestHarness(
 		now?: () => string;
 		dispatchRun?: RuntimeDispatchFunction;
 		inngestHandler?: DaemonRequestHandler;
+		useAppDefaultDispatch?: boolean;
 	},
 ) {
 	harness.store.close();
@@ -149,7 +155,11 @@ export async function reopenDaemonTestHarness(
 			eventStreamBroker,
 			generateRunId: makeSequentialRunIdGenerator(),
 			now: options?.now ?? (() => "2026-03-11T12:10:00.000Z"),
-			dispatchRun: options?.dispatchRun ?? (() => Promise.resolve()),
+			...(options?.useAppDefaultDispatch
+				? {}
+				: {
+						dispatchRun: options?.dispatchRun ?? (() => Promise.resolve()),
+					}),
 			inngestHandler:
 				options?.inngestHandler ??
 				(() =>

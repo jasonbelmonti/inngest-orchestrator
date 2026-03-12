@@ -13,9 +13,10 @@ interface RuntimeDispatchEvent {
 }
 ```
 
-The local daemon now dispatches this event immediately after persisting `run.created` and
-`run.started` for `POST /runs`. The same daemon process also mounts the Inngest handler at
-`/api/inngest`.
+The same daemon process mounts the Inngest handler at `/api/inngest`, but the stock BEL-373
+`POST /runs` path uses in-process dispatch by default so local execution does not depend on an
+external Inngest event key. The explicit `orchestrator/run.requested` event contract remains the
+durable worker contract for later daemon/runtime bridge slices.
 
 The runtime worker loads the persisted run from SQLite, re-reads the workflow from the launch
 config root, recompiles the BEL-366 execution plan against the pinned workflow snapshot, and
