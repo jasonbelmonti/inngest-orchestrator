@@ -109,6 +109,54 @@ test("handleRunControl skips persisted event lookup when there are no subscriber
 	expect(readEventCalls).toBe(0);
 });
 
+test("handleRunControl redispatches the run after approval resolution", async () => {
+	const dispatchedRunIds: string[] = [];
+
+	const store = {
+		appendEvent: () =>
+			({
+				runId: "run-approval",
+				latestEventSequence: 6,
+			}) as RunProjectionRecord,
+		readEvent: ({ sequence }: { runId: string; sequence: number }) =>
+			makeStoredEvent(sequence, "approval.resolved"),
+	} as unknown as SQLiteRunStore;
+
+	const eventStreamBroker = {
+		subscriberCount: () => 0,
+		publish: () => {
+			throw new Error("publish should not be called without subscribers");
+		},
+	} as unknown as RunEventStreamBroker;
+
+	const response = await handleRunControl(
+		new Request("http://daemon.test/runs/run-approval/control", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				action: "resolve_approval",
+				approvalId: "approval:approve",
+				decision: "approved",
+			}),
+		}),
+		"run-approval",
+		{
+			store,
+			eventStreamBroker,
+			generateRunId: () => "unused",
+			now: () => "2026-03-11T12:00:00.000Z",
+			dispatchRun: ({ runId }) => {
+				dispatchedRunIds.push(runId);
+				return Promise.resolve();
+			},
+			inngestHandler: () => new Response(null, { status: 204 }),
+		},
+	);
+
+	expect(response.status).toBe(200);
+	expect(dispatchedRunIds).toEqual(["run-approval"]);
+});
+
 function makeStoredEvent(
 	sequence: number,
 	type: StoredRunEvent["type"],
@@ -125,6 +173,13 @@ function makeStoredEvent(
 				...base,
 				type,
 				reason: "operator stopped run",
+			};
+		case "approval.resolved":
+			return {
+				...base,
+				type,
+				approvalId: "approval:approve",
+				decision: "approved",
 			};
 		default:
 			throw new Error(`Unsupported test event type: ${type}`);

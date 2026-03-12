@@ -134,6 +134,31 @@ export async function handleRunControl(
 		run.latestEventSequence,
 	]);
 
+	if (control.action === "resolve_approval") {
+		try {
+			await options.dispatchRun({ runId });
+		} catch (error) {
+			const failedRun = options.store.appendEvent({
+				runId,
+				event: {
+					type: "run.failed",
+					occurredAt: options.now(),
+					message: `Persisted run "${runId}" could not be resumed after approval resolution.`,
+				},
+			});
+			publishEventSequences(options.store, options.eventStreamBroker, runId, [
+				failedRun.latestEventSequence,
+			]);
+			throw new DaemonHttpError({
+				status: 500,
+				code: "runtime_dispatch_failed",
+				message: `Persisted run "${runId}" could not be resumed after approval resolution.`,
+				runId,
+				cause: error,
+			});
+		}
+	}
+
 	return successResponse(200, { run });
 }
 
