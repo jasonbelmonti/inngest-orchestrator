@@ -1,4 +1,7 @@
-import type { WorkflowRecord } from "../workflows/types.ts";
+import type {
+	CompiledWorkflowDocument,
+	WorkflowRecord,
+} from "../workflows/types.ts";
 import { compileWorkflowDocument } from "../workflows/compiler.ts";
 import { RuntimePlanError, type RuntimeIssue } from "./errors.ts";
 import type {
@@ -26,17 +29,34 @@ export function createRuntimeExecutionPlan(input: {
 		repoCatalog: input.workflowRecord.repoCatalog,
 		filePath: input.workflowRecord.filePath,
 	});
-	const issues: RuntimeIssue[] = [];
-	const nodeById = new Map(compiled.nodes.map((node) => [node.id, node]));
-	const outgoingBySource = new Map<string, typeof compiled.edges>();
+	return createRuntimeExecutionPlanFromCompiledWorkflow({
+		run: input.run,
+		compiledWorkflow: compiled,
+	});
+}
 
-	for (const edge of compiled.edges) {
+export function createRuntimeExecutionPlanFromCompiledWorkflow(input: {
+	run: RuntimeExecutionPlanInput;
+	compiledWorkflow: CompiledWorkflowDocument;
+}): RuntimeExecutionPlan {
+	const issues: RuntimeIssue[] = [];
+	const nodeById = new Map(
+		input.compiledWorkflow.nodes.map((node) => [node.id, node]),
+	);
+	const outgoingBySource = new Map<
+		string,
+		typeof input.compiledWorkflow.edges
+	>();
+
+	for (const edge of input.compiledWorkflow.edges) {
 		const outgoing = outgoingBySource.get(edge.sourceId) ?? [];
 		outgoing.push(edge);
 		outgoingBySource.set(edge.sourceId, outgoing);
 	}
 
-	const trigger = compiled.nodes.find((node) => node.kind === "trigger");
+	const trigger = input.compiledWorkflow.nodes.find(
+		(node) => node.kind === "trigger",
+	);
 	if (!trigger) {
 		throw new RuntimePlanError("Runtime execution plan is missing a trigger.", [
 			{
@@ -150,6 +170,7 @@ export function createRuntimeExecutionPlan(input: {
 						message: `Terminal node "${currentNode.id}" cannot have outgoing runtime transitions.`,
 						path: `$.nodes.${currentNode.id}`,
 					});
+					currentNodeId = null;
 					break;
 				}
 
@@ -191,8 +212,8 @@ export function createRuntimeExecutionPlan(input: {
 
 	return {
 		runId: input.run.runId,
-		workflowId: compiled.workflowId,
-		workflowName: compiled.name,
+		workflowId: input.compiledWorkflow.workflowId,
+		workflowName: input.compiledWorkflow.name,
 		steps,
 	};
 }
