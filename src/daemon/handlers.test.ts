@@ -45,6 +45,8 @@ test("handleRunControl publishes only the event appended by its own mutation", a
 			eventStreamBroker,
 			generateRunId: () => "unused",
 			now: () => "2026-03-11T12:00:00.000Z",
+			dispatchRun: () => Promise.resolve(),
+			inngestHandler: () => new Response(null, { status: 204 }),
 		},
 	);
 
@@ -98,6 +100,8 @@ test("handleRunControl skips persisted event lookup when there are no subscriber
 			eventStreamBroker,
 			generateRunId: () => "unused",
 			now: () => "2026-03-11T12:00:00.000Z",
+			dispatchRun: () => Promise.resolve(),
+			inngestHandler: () => new Response(null, { status: 204 }),
 		},
 	);
 

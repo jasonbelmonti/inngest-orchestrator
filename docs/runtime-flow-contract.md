@@ -13,6 +13,10 @@ interface RuntimeDispatchEvent {
 }
 ```
 
+The local daemon now dispatches this event immediately after persisting `run.created` and
+`run.started` for `POST /runs`. The same daemon process also mounts the Inngest handler at
+`/api/inngest`.
+
 The runtime worker loads the persisted run from SQLite, re-reads the workflow from the launch
 config root, recompiles the BEL-366 execution plan against the pinned workflow snapshot, and
 applies all durable state changes through the run store.

@@ -54,12 +54,14 @@ Error notes:
 - `RunLaunchError` responses keep their existing `code` and `issues`
 - `run_store_not_found` returns `404`
 - `run_store_conflict` and `run_store_invalid_transition` return `409`
+- runtime dispatch failures after durable run creation return `500` with `code: "runtime_dispatch_failed"`
 - unexpected errors return `500` with `code: "internal_error"`
 
 ## POST /runs
 
 Creates a run from the existing launch contract, persists it, then immediately appends
-`run.started`.
+`run.started`. After those durable events are stored, the daemon dispatches the persisted run to
+the mounted Inngest runtime.
 
 The request must use `Content-Type: application/json`.
 
@@ -148,6 +150,11 @@ Returns the full persisted `RunProjectionRecord` for one run.
 Success status: `200`
 
 Unknown runs return `404` with `code: "run_store_not_found"`.
+
+## /api/inngest
+
+The daemon mounts the local Inngest handler at `/api/inngest` so the Inngest dev server or
+runtime can invoke persisted run execution without a separate HTTP process.
 
 ## GET /runs/:id/events
 
