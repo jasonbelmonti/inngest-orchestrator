@@ -908,6 +908,53 @@ describe("daemon app", () => {
 		});
 	});
 
+	test("POST /runs/:id/control does not redispatch non-runtime approvals on the stock local dispatcher", async () => {
+		const harness = await createDaemonTestHarness({
+			useAppDefaultDispatch: true,
+		});
+		await seedActiveStepRun(harness, "run-bug");
+
+		const requestApproval = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-bug/control",
+			{
+				action: "request_approval",
+				approvalId: "approval-bug",
+				stepId: "implement",
+			},
+		);
+		expect(requestApproval.status).toBe(200);
+
+		const resolveApproval = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-bug/control",
+			{
+				action: "resolve_approval",
+				approvalId: "approval-bug",
+				decision: "approved",
+			},
+		);
+		expect(resolveApproval.status).toBe(200);
+
+		await Bun.sleep(20);
+
+		expect(harness.store.readRun("run-bug")).toMatchObject({
+			runId: "run-bug",
+			status: "running",
+			currentStepId: "implement",
+			latestEventSequence: 5,
+			failureMessage: null,
+			approvals: [
+				expect.objectContaining({
+					approvalId: "approval-bug",
+					status: "approved",
+				}),
+			],
+		});
+	});
+
 	test("POST /runs/:id/control supports rejected approvals", async () => {
 		const harness = await createDaemonTestHarness();
 		await seedActiveStepRun(harness, "run-reject");

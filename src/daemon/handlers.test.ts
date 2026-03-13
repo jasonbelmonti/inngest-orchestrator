@@ -109,13 +109,23 @@ test("handleRunControl skips persisted event lookup when there are no subscriber
 	expect(readEventCalls).toBe(0);
 });
 
-test("handleRunControl redispatches the run after approval resolution", async () => {
+test("handleRunControl skips redispatch for non-runtime approval resolution", async () => {
 	const dispatchedRunIds: string[] = [];
 
 	const store = {
 		appendEvent: () =>
 			({
 				runId: "run-approval",
+				currentStepId: "implement",
+				launch: {
+					configRoot: "/tmp/non-runtime",
+					workflow: {
+						workflowId: "cross-repo-bugfix",
+						contentHash: "hash",
+						filePath: "/tmp/non-runtime/workflows/cross-repo-bugfix.json",
+					},
+					repoBindings: {},
+				},
 				latestEventSequence: 6,
 			}) as RunProjectionRecord,
 		readEvent: ({ sequence }: { runId: string; sequence: number }) =>
@@ -135,7 +145,7 @@ test("handleRunControl redispatches the run after approval resolution", async ()
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({
 				action: "resolve_approval",
-				approvalId: "approval:approve",
+				approvalId: "approval-operator",
 				decision: "approved",
 			}),
 		}),
@@ -154,7 +164,7 @@ test("handleRunControl redispatches the run after approval resolution", async ()
 	);
 
 	expect(response.status).toBe(200);
-	expect(dispatchedRunIds).toEqual(["run-approval"]);
+	expect(dispatchedRunIds).toEqual([]);
 });
 
 function makeStoredEvent(
@@ -178,7 +188,7 @@ function makeStoredEvent(
 			return {
 				...base,
 				type,
-				approvalId: "approval:approve",
+				approvalId: "approval-operator",
 				decision: "approved",
 			};
 		default:
