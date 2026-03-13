@@ -29,6 +29,7 @@ export function createDaemonApp(options: CreateDaemonAppOptions) {
 				options.dispatchRun ??
 				createLocalRuntimeDispatch({
 					store: options.store,
+					eventStreamBroker,
 					now,
 				}),
 			inngestHandler: options.inngestHandler ?? inngestHandler,
