@@ -955,6 +955,32 @@ describe("daemon app", () => {
 		});
 	});
 
+	test("POST /runs/:id/control rejects operator approval ids in the reserved runtime namespace", async () => {
+		const harness = await createDaemonTestHarness();
+		await seedActiveStepRun(harness, "run-reserved-approval");
+
+		const response = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-reserved-approval/control",
+			{
+				action: "request_approval",
+				approvalId: "approval:implement",
+				stepId: "implement",
+			},
+		);
+
+		expect(response.status).toBe(400);
+		expect(await expectJson(response)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "invalid_http_input",
+				message:
+					'"approvalId" must not start with "approval:" because that prefix is reserved for runtime-generated approval gates.',
+			}),
+		});
+	});
+
 	test("POST /runs/:id/control supports rejected approvals", async () => {
 		const harness = await createDaemonTestHarness();
 		await seedActiveStepRun(harness, "run-reject");

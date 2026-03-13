@@ -235,6 +235,7 @@ Validation notes:
 - the daemon does not invent `approvalId` or `stepId`
 - the daemon does not add synthetic `step.started` or `step.completed` helpers
 - `request_approval` succeeds only when the run is already on an active step
+- `request_approval` must not use an `approvalId` starting with `approval:`; that prefix is reserved for runtime-generated approval gates
 - `approvalId`, `stepId`, `reason`, `message`, and `comment` are capped at `65536` UTF-8 bytes
 - state transition validation remains owned by the run store
 
