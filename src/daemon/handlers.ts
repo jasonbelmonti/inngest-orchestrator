@@ -1,5 +1,8 @@
 import { resolveRunLaunchRequest } from "../runs/repo-bindings.ts";
 import type { SQLiteRunStore } from "../runs/store/sqlite-store.ts";
+import type { RunProjectionRecord } from "../runs/store/types.ts";
+import { createRuntimeExecutionPlan } from "../runtime/execution-plan.ts";
+import { WorkflowStore } from "../workflows/store.ts";
 import { DaemonHttpError } from "./errors.ts";
 import { toRunControlEvent } from "./control-events.ts";
 import { resolveRunEventReplay } from "./event-replay.ts";
@@ -134,7 +137,72 @@ export async function handleRunControl(
 		run.latestEventSequence,
 	]);
 
+	if (
+		control.action === "resolve_approval" &&
+		(await shouldRedispatchApprovalResolution(run, control.approvalId))
+	) {
+		try {
+			await options.dispatchRun({ runId });
+		} catch (error) {
+			const failedRun = options.store.appendEvent({
+				runId,
+				event: {
+					type: "run.failed",
+					occurredAt: options.now(),
+					message: `Persisted run "${runId}" could not be resumed after approval resolution.`,
+				},
+			});
+			publishEventSequences(options.store, options.eventStreamBroker, runId, [
+				failedRun.latestEventSequence,
+			]);
+			throw new DaemonHttpError({
+				status: 500,
+				code: "runtime_dispatch_failed",
+				message: `Persisted run "${runId}" could not be resumed after approval resolution.`,
+				runId,
+				cause: error,
+			});
+		}
+	}
+
 	return successResponse(200, { run });
+}
+
+async function shouldRedispatchApprovalResolution(
+	run: RunProjectionRecord,
+	approvalId: string,
+) {
+	if (run.currentStepId === null) {
+		return false;
+	}
+
+	const looksLikeRuntimeApproval =
+		approvalId === `approval:${run.currentStepId}`;
+	if (!looksLikeRuntimeApproval) {
+		return false;
+	}
+
+	try {
+		const workflowStore = await WorkflowStore.open({
+			configRoot: run.launch.configRoot,
+		});
+		const workflowRecord = await workflowStore.readWorkflow(
+			run.launch.workflow.workflowId,
+		);
+		const plan = createRuntimeExecutionPlan({
+			run: {
+				runId: run.runId,
+				launch: run.launch,
+			},
+			workflowRecord,
+		});
+		const step = plan.steps.find(
+			(candidate) => candidate.id === run.currentStepId,
+		);
+		return step?.kind === "approval" && step.approvalId === approvalId;
+	} catch {
+		return true;
+	}
 }
 
 function publishEventSequences(

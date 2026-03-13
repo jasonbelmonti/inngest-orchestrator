@@ -3,6 +3,7 @@ import type { RunControlRequest } from "./types.ts";
 
 const MAX_CONTROL_TEXT_BYTES = 64 * 1024;
 const MAX_CONTROL_IDENTIFIER_BYTES = 64 * 1024;
+const RESERVED_RUNTIME_APPROVAL_PREFIX = "approval:";
 const textEncoder = new TextEncoder();
 
 export async function readJsonBody(request: Request) {
@@ -38,10 +39,7 @@ export function parseRunControlRequest(input: unknown): RunControlRequest {
 		case "request_approval":
 			return {
 				action: "request_approval",
-				approvalId: requireBoundedNonEmptyString(
-					input.approvalId,
-					"approvalId",
-				),
+				approvalId: requireOperatorApprovalId(input.approvalId),
 				stepId: requireBoundedNonEmptyString(input.stepId, "stepId"),
 				...parseOptionalStringField(
 					input,
@@ -85,6 +83,17 @@ function requireBoundedNonEmptyString(input: unknown, fieldName: string) {
 	}
 
 	throw invalidControlRequest(`"${fieldName}" must be a non-empty string.`);
+}
+
+function requireOperatorApprovalId(input: unknown) {
+	const approvalId = requireBoundedNonEmptyString(input, "approvalId");
+	if (approvalId.startsWith(RESERVED_RUNTIME_APPROVAL_PREFIX)) {
+		throw invalidControlRequest(
+			`"approvalId" must not start with "${RESERVED_RUNTIME_APPROVAL_PREFIX}" because that prefix is reserved for runtime-generated approval gates.`,
+		);
+	}
+
+	return approvalId;
 }
 
 function invalidControlRequest(message: string) {

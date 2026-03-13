@@ -246,6 +246,194 @@ describe("executePersistedRun", () => {
 			"approval.requested",
 		]);
 	});
+
+	test("resumes a waiting approval run after approval is granted", async () => {
+		const fixture = await createRuntimeFixture({
+			command: "printf 'shell-ok\\n'",
+			includeApprovalGate: true,
+		});
+		const store = SQLiteRunStore.open();
+		openedStores.push(store);
+		const clock = createDeterministicClock();
+
+		store.createStartedRun({
+			runId: "run-005",
+			createdAt: clock(),
+			startedAt: clock(),
+			launch: fixture.launch,
+		});
+		await executePersistedRun({
+			runId: "run-005",
+			store,
+			now: clock,
+		});
+		store.appendEvent({
+			runId: "run-005",
+			event: {
+				type: "approval.resolved",
+				occurredAt: clock(),
+				approvalId: "approval:approve",
+				decision: "approved",
+			},
+		});
+
+		const run = await executePersistedRun({
+			runId: "run-005",
+			store,
+			now: clock,
+		});
+
+		expect(run.status).toBe("completed");
+		expect(run.failureMessage).toBeNull();
+		expect(store.listEvents("run-005").map((event) => event.type)).toEqual([
+			"run.created",
+			"run.started",
+			"step.started",
+			"step.completed",
+			"step.started",
+			"approval.requested",
+			"approval.resolved",
+			"step.completed",
+			"step.started",
+			"artifact.created",
+			"step.completed",
+			"step.started",
+			"step.completed",
+			"run.completed",
+		]);
+	});
+
+	test("fails a waiting approval run deterministically when approval is rejected", async () => {
+		const fixture = await createRuntimeFixture({
+			command: "printf 'unused\\n'",
+			includeApprovalGate: true,
+		});
+		const store = SQLiteRunStore.open();
+		openedStores.push(store);
+		const clock = createDeterministicClock();
+
+		store.createStartedRun({
+			runId: "run-006",
+			createdAt: clock(),
+			startedAt: clock(),
+			launch: fixture.launch,
+		});
+		await executePersistedRun({
+			runId: "run-006",
+			store,
+			now: clock,
+		});
+		store.appendEvent({
+			runId: "run-006",
+			event: {
+				type: "approval.resolved",
+				occurredAt: clock(),
+				approvalId: "approval:approve",
+				decision: "rejected",
+			},
+		});
+
+		const run = await executePersistedRun({
+			runId: "run-006",
+			store,
+			now: clock,
+		});
+
+		expect(run.status).toBe("failed");
+		expect(run.failureMessage).toBe('Approval step "approve" was rejected.');
+		expect(store.listEvents("run-006").map((event) => event.type)).toEqual([
+			"run.created",
+			"run.started",
+			"step.started",
+			"step.completed",
+			"step.started",
+			"approval.requested",
+			"approval.resolved",
+			"step.failed",
+			"run.failed",
+		]);
+	});
+
+	test("fails closed when approval resolution does not match the waiting approval step", async () => {
+		const fixture = await createRuntimeFixture({
+			command: "printf 'unused\\n'",
+			includeApprovalGate: true,
+		});
+		const store = SQLiteRunStore.open();
+		openedStores.push(store);
+		const clock = createDeterministicClock();
+
+		store.createStartedRun({
+			runId: "run-007",
+			createdAt: clock(),
+			startedAt: clock(),
+			launch: fixture.launch,
+		});
+		store.appendEvent({
+			runId: "run-007",
+			event: {
+				type: "step.started",
+				occurredAt: clock(),
+				stepId: "implement",
+			},
+		});
+		store.appendEvent({
+			runId: "run-007",
+			event: {
+				type: "step.completed",
+				occurredAt: clock(),
+				stepId: "implement",
+			},
+		});
+		store.appendEvent({
+			runId: "run-007",
+			event: {
+				type: "step.started",
+				occurredAt: clock(),
+				stepId: "approve",
+			},
+		});
+		store.appendEvent({
+			runId: "run-007",
+			event: {
+				type: "approval.requested",
+				occurredAt: clock(),
+				approvalId: "approval:other",
+				stepId: "approve",
+				message: "Wrong approval id",
+			},
+		});
+		store.appendEvent({
+			runId: "run-007",
+			event: {
+				type: "approval.resolved",
+				occurredAt: clock(),
+				approvalId: "approval:other",
+				decision: "approved",
+			},
+		});
+		const run = await executePersistedRun({
+			runId: "run-007",
+			store,
+			now: clock,
+		});
+
+		expect(run.status).toBe("failed");
+		expect(run.failureMessage).toBe(
+			'Persisted run "run-007" cannot resume approval step "approve" without matching resolved approval "approval:approve".',
+		);
+		expect(store.listEvents("run-007").map((event) => event.type)).toEqual([
+			"run.created",
+			"run.started",
+			"step.started",
+			"step.completed",
+			"step.started",
+			"approval.requested",
+			"approval.resolved",
+			"step.failed",
+			"run.failed",
+		]);
+	});
 });
 
 async function createRuntimeFixture(input: {
