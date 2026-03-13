@@ -201,7 +201,7 @@ async function shouldRedispatchApprovalResolution(
 		);
 		return step?.kind === "approval" && step.approvalId === approvalId;
 	} catch {
-		return true;
+		return false;
 	}
 }
 

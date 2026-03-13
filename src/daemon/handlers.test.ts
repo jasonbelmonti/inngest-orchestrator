@@ -167,6 +167,65 @@ test("handleRunControl skips redispatch for non-runtime approval resolution", as
 	expect(dispatchedRunIds).toEqual([]);
 });
 
+test("handleRunControl skips redispatch when runtime approval verification fails", async () => {
+	const dispatchedRunIds: string[] = [];
+
+	const store = {
+		appendEvent: () =>
+			({
+				runId: "run-approval",
+				currentStepId: "implement",
+				launch: {
+					configRoot: "/tmp/missing-workflow-root",
+					workflow: {
+						workflowId: "cross-repo-bugfix",
+						contentHash: "hash",
+						filePath:
+							"/tmp/missing-workflow-root/workflows/cross-repo-bugfix.json",
+					},
+					repoBindings: {},
+				},
+				latestEventSequence: 6,
+			}) as RunProjectionRecord,
+		readEvent: ({ sequence }: { runId: string; sequence: number }) =>
+			makeStoredEvent(sequence, "approval.resolved"),
+	} as unknown as SQLiteRunStore;
+
+	const eventStreamBroker = {
+		subscriberCount: () => 0,
+		publish: () => {
+			throw new Error("publish should not be called without subscribers");
+		},
+	} as unknown as RunEventStreamBroker;
+
+	const response = await handleRunControl(
+		new Request("http://daemon.test/runs/run-approval/control", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				action: "resolve_approval",
+				approvalId: "approval:implement",
+				decision: "approved",
+			}),
+		}),
+		"run-approval",
+		{
+			store,
+			eventStreamBroker,
+			generateRunId: () => "unused",
+			now: () => "2026-03-11T12:00:00.000Z",
+			dispatchRun: ({ runId }) => {
+				dispatchedRunIds.push(runId);
+				return Promise.resolve();
+			},
+			inngestHandler: () => new Response(null, { status: 204 }),
+		},
+	);
+
+	expect(response.status).toBe(200);
+	expect(dispatchedRunIds).toEqual([]);
+});
+
 function makeStoredEvent(
 	sequence: number,
 	type: StoredRunEvent["type"],
