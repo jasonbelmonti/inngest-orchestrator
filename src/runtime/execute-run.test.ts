@@ -199,9 +199,247 @@ describe("executePersistedRun", () => {
 			"run.failed",
 		]);
 	});
+
+	test("pauses durably when execution reaches an approval gate", async () => {
+		const fixture = await createRuntimeFixture({
+			command: "printf 'unused\\n'",
+			includeApprovalGate: true,
+		});
+		const store = SQLiteRunStore.open();
+		openedStores.push(store);
+		const clock = createDeterministicClock();
+
+		store.createStartedRun({
+			runId: "run-004",
+			createdAt: clock(),
+			startedAt: clock(),
+			launch: fixture.launch,
+		});
+
+		const run = await executePersistedRun({
+			runId: "run-004",
+			store,
+			now: clock,
+		});
+
+		expect(run.status).toBe("waiting_for_approval");
+		expect(run.currentStepId).toBe("approve");
+		expect(run.failureMessage).toBeNull();
+		expect(run.approvals).toEqual([
+			{
+				approvalId: "approval:approve",
+				runId: "run-004",
+				stepId: "approve",
+				status: "pending",
+				requestedAt: "2026-03-12T18:00:06.000Z",
+				respondedAt: null,
+				decision: null,
+				message: "Ship it?",
+			},
+		]);
+		expect(store.listEvents("run-004").map((event) => event.type)).toEqual([
+			"run.created",
+			"run.started",
+			"step.started",
+			"step.completed",
+			"step.started",
+			"approval.requested",
+		]);
+	});
+
+	test("resumes a waiting approval run after approval is granted", async () => {
+		const fixture = await createRuntimeFixture({
+			command: "printf 'shell-ok\\n'",
+			includeApprovalGate: true,
+		});
+		const store = SQLiteRunStore.open();
+		openedStores.push(store);
+		const clock = createDeterministicClock();
+
+		store.createStartedRun({
+			runId: "run-005",
+			createdAt: clock(),
+			startedAt: clock(),
+			launch: fixture.launch,
+		});
+		await executePersistedRun({
+			runId: "run-005",
+			store,
+			now: clock,
+		});
+		store.appendEvent({
+			runId: "run-005",
+			event: {
+				type: "approval.resolved",
+				occurredAt: clock(),
+				approvalId: "approval:approve",
+				decision: "approved",
+			},
+		});
+
+		const run = await executePersistedRun({
+			runId: "run-005",
+			store,
+			now: clock,
+		});
+
+		expect(run.status).toBe("completed");
+		expect(run.failureMessage).toBeNull();
+		expect(store.listEvents("run-005").map((event) => event.type)).toEqual([
+			"run.created",
+			"run.started",
+			"step.started",
+			"step.completed",
+			"step.started",
+			"approval.requested",
+			"approval.resolved",
+			"step.completed",
+			"step.started",
+			"artifact.created",
+			"step.completed",
+			"step.started",
+			"step.completed",
+			"run.completed",
+		]);
+	});
+
+	test("fails a waiting approval run deterministically when approval is rejected", async () => {
+		const fixture = await createRuntimeFixture({
+			command: "printf 'unused\\n'",
+			includeApprovalGate: true,
+		});
+		const store = SQLiteRunStore.open();
+		openedStores.push(store);
+		const clock = createDeterministicClock();
+
+		store.createStartedRun({
+			runId: "run-006",
+			createdAt: clock(),
+			startedAt: clock(),
+			launch: fixture.launch,
+		});
+		await executePersistedRun({
+			runId: "run-006",
+			store,
+			now: clock,
+		});
+		store.appendEvent({
+			runId: "run-006",
+			event: {
+				type: "approval.resolved",
+				occurredAt: clock(),
+				approvalId: "approval:approve",
+				decision: "rejected",
+			},
+		});
+
+		const run = await executePersistedRun({
+			runId: "run-006",
+			store,
+			now: clock,
+		});
+
+		expect(run.status).toBe("failed");
+		expect(run.failureMessage).toBe('Approval step "approve" was rejected.');
+		expect(store.listEvents("run-006").map((event) => event.type)).toEqual([
+			"run.created",
+			"run.started",
+			"step.started",
+			"step.completed",
+			"step.started",
+			"approval.requested",
+			"approval.resolved",
+			"step.failed",
+			"run.failed",
+		]);
+	});
+
+	test("fails closed when approval resolution does not match the waiting approval step", async () => {
+		const fixture = await createRuntimeFixture({
+			command: "printf 'unused\\n'",
+			includeApprovalGate: true,
+		});
+		const store = SQLiteRunStore.open();
+		openedStores.push(store);
+		const clock = createDeterministicClock();
+
+		store.createStartedRun({
+			runId: "run-007",
+			createdAt: clock(),
+			startedAt: clock(),
+			launch: fixture.launch,
+		});
+		store.appendEvent({
+			runId: "run-007",
+			event: {
+				type: "step.started",
+				occurredAt: clock(),
+				stepId: "implement",
+			},
+		});
+		store.appendEvent({
+			runId: "run-007",
+			event: {
+				type: "step.completed",
+				occurredAt: clock(),
+				stepId: "implement",
+			},
+		});
+		store.appendEvent({
+			runId: "run-007",
+			event: {
+				type: "step.started",
+				occurredAt: clock(),
+				stepId: "approve",
+			},
+		});
+		store.appendEvent({
+			runId: "run-007",
+			event: {
+				type: "approval.requested",
+				occurredAt: clock(),
+				approvalId: "approval:other",
+				stepId: "approve",
+				message: "Wrong approval id",
+			},
+		});
+		store.appendEvent({
+			runId: "run-007",
+			event: {
+				type: "approval.resolved",
+				occurredAt: clock(),
+				approvalId: "approval:other",
+				decision: "approved",
+			},
+		});
+		const run = await executePersistedRun({
+			runId: "run-007",
+			store,
+			now: clock,
+		});
+
+		expect(run.status).toBe("failed");
+		expect(run.failureMessage).toBe(
+			'Persisted run "run-007" cannot resume approval step "approve" without matching resolved approval "approval:approve".',
+		);
+		expect(store.listEvents("run-007").map((event) => event.type)).toEqual([
+			"run.created",
+			"run.started",
+			"step.started",
+			"step.completed",
+			"step.started",
+			"approval.requested",
+			"approval.resolved",
+			"step.failed",
+			"run.failed",
+		]);
+	});
 });
 
-async function createRuntimeFixture(input: { command: string }) {
+async function createRuntimeFixture(input: {
+	command: string;
+	includeApprovalGate?: boolean;
+}) {
 	const root = await mkdtemp(join(tmpdir(), "runtime-executor-"));
 	createdRoots.push(root);
 
@@ -219,23 +457,7 @@ async function createRuntimeFixture(input: { command: string }) {
 	);
 	await Bun.write(
 		join(configRoot, "workflows", "cross-repo-bugfix.json"),
-		`${JSON.stringify(
-			makeWorkflow({
-				nodes: makeWorkflow().nodes.map((node) =>
-					node.id === "typecheck"
-						? {
-								...node,
-								settings: {
-									...node.settings,
-									command: input.command,
-								},
-							}
-						: node,
-				),
-			}),
-			null,
-			2,
-		)}\n`,
+		`${JSON.stringify(makeRuntimeWorkflowFixture(input), null, 2)}\n`,
 	);
 
 	const launch = await resolveRunLaunchRequest({
@@ -253,6 +475,74 @@ async function createRuntimeFixture(input: { command: string }) {
 		agentConsolePath,
 		orchestratorPath,
 	};
+}
+
+function makeRuntimeWorkflowFixture(input: {
+	command: string;
+	includeApprovalGate?: boolean;
+}) {
+	const baseWorkflow = makeWorkflow();
+	const nodes = baseWorkflow.nodes.map((node) =>
+		node.id === "typecheck"
+			? {
+					...node,
+					settings: {
+						...node.settings,
+						command: input.command,
+					},
+				}
+			: node,
+	);
+
+	if (!input.includeApprovalGate) {
+		return makeWorkflow({ nodes });
+	}
+
+	return makeWorkflow({
+		nodes: nodes.flatMap((node) =>
+			node.id === "typecheck"
+				? [
+						{
+							id: "approve",
+							kind: "gate" as const,
+							label: "Approve Changes",
+							phaseId: "output",
+							settings: {
+								template: "gate.approval",
+								message: "Ship it?",
+							},
+						},
+						node,
+					]
+				: [node],
+		),
+		edges: [
+			{
+				id: "edge-trigger-implement",
+				sourceId: "trigger",
+				targetId: "implement",
+				condition: "always" as const,
+			},
+			{
+				id: "edge-implement-approve",
+				sourceId: "implement",
+				targetId: "approve",
+				condition: "on_success" as const,
+			},
+			{
+				id: "edge-approve-typecheck",
+				sourceId: "approve",
+				targetId: "typecheck",
+				condition: "on_approval" as const,
+			},
+			{
+				id: "edge-typecheck-terminal",
+				sourceId: "typecheck",
+				targetId: "terminal",
+				condition: "on_success" as const,
+			},
+		],
+	});
 }
 
 function createDeterministicClock() {

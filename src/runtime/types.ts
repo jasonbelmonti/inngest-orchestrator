@@ -30,6 +30,15 @@ export type RuntimeExecutionPlanStep =
 	  }
 	| {
 			id: string;
+			kind: "approval";
+			template: Extract<WorkflowNodeTemplate, "gate.approval">;
+			label: string;
+			approvalId: string;
+			message: string | null;
+			rejectionOutcome: "fail";
+	  }
+	| {
+			id: string;
 			kind: "terminal";
 			template: Extract<WorkflowNodeTemplate, "terminal.complete">;
 			label: string;

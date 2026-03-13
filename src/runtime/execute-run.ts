@@ -1,4 +1,8 @@
-import { RunStoreError, type SQLiteRunStore } from "../runs/store/index.ts";
+import {
+	RunStoreError,
+	type RunProjectionRecord,
+	type SQLiteRunStore,
+} from "../runs/store/index.ts";
 import { WorkflowStore } from "../workflows/store.ts";
 import { createRuntimeExecutionPlan } from "./execution-plan.ts";
 import { executeShellCheck } from "./shell-check.ts";
@@ -23,16 +27,6 @@ export async function executePersistedRun(input: ExecutePersistedRunOptions) {
 	if (initialRun.status !== "running") {
 		return initialRun;
 	}
-	if (initialRun.latestEventSequence > 2 || initialRun.currentStepId !== null) {
-		return failPersistedRunExecution({
-			runId: input.runId,
-			store: input.store,
-			now,
-			error: new Error(
-				`Persisted run "${input.runId}" cannot resume after partial BEL-373 execution progress.`,
-			),
-		});
-	}
 
 	try {
 		const workflowStore = await WorkflowStore.open({
@@ -49,11 +43,42 @@ export async function executePersistedRun(input: ExecutePersistedRunOptions) {
 			workflowRecord,
 		});
 
+		const resume = resolveResumeState({
+			run: initialRun,
+			plan,
+		});
+		if (resume.kind === "invalid") {
+			return failPersistedRunExecution({
+				runId: input.runId,
+				store: input.store,
+				now,
+				error: new Error(resume.message),
+			});
+		}
+
 		let run = initialRun;
-		for (const step of plan.steps) {
-			run = await executeRuntimeStep(initialRun.runId, step, input.store, now);
+		if (resume.kind === "approval") {
+			run = resumeApprovalStep({
+				runId: input.runId,
+				store: input.store,
+				step: resume.step,
+				decision: resume.decision,
+				now,
+			});
 
 			if (run.status === "failed" || run.status === "completed") {
+				return run;
+			}
+		}
+
+		for (const step of plan.steps.slice(resume.nextStepIndex)) {
+			run = await executeRuntimeStep(initialRun.runId, step, input.store, now);
+
+			if (
+				run.status === "failed" ||
+				run.status === "completed" ||
+				run.status === "waiting_for_approval"
+			) {
 				return run;
 			}
 		}
@@ -82,6 +107,8 @@ async function executeRuntimeStep(
 			return executeTaskStep({ runId, step, store, now });
 		case "check":
 			return executeCheckStep({ runId, step, store, now });
+		case "approval":
+			return executeApprovalStep({ runId, step, store, now });
 		case "terminal":
 			return executeTerminalStep({ runId, step, store, now });
 	}
@@ -110,6 +137,69 @@ function executeTaskStep(input: {
 			stepId: input.step.id,
 		},
 	});
+}
+
+function resolveResumeState(input: {
+	run: RunProjectionRecord;
+	plan: { steps: RuntimeExecutionPlanStep[] };
+}):
+	| { kind: "initial"; nextStepIndex: number }
+	| {
+			kind: "approval";
+			nextStepIndex: number;
+			step: Extract<RuntimeExecutionPlanStep, { kind: "approval" }>;
+			decision: "approved" | "rejected";
+	  }
+	| { kind: "invalid"; message: string } {
+	if (input.run.latestEventSequence <= 2 && input.run.currentStepId === null) {
+		return { kind: "initial", nextStepIndex: 0 };
+	}
+
+	if (input.run.currentStepId === null) {
+		return {
+			kind: "invalid",
+			message: `Persisted run "${input.run.runId}" cannot resume after unsupported partial execution progress.`,
+		};
+	}
+
+	const stepIndex = input.plan.steps.findIndex(
+		(step) => step.id === input.run.currentStepId,
+	);
+	if (stepIndex < 0) {
+		return {
+			kind: "invalid",
+			message: `Persisted run "${input.run.runId}" cannot resume because active step "${input.run.currentStepId}" is not present in the runtime plan.`,
+		};
+	}
+
+	const step = input.plan.steps[stepIndex];
+	if (!step || step.kind !== "approval") {
+		return {
+			kind: "invalid",
+			message: `Persisted run "${input.run.runId}" cannot resume after partial BEL-373 execution progress.`,
+		};
+	}
+
+	const approval = input.run.approvals.find(
+		(candidate) => candidate.approvalId === step.approvalId,
+	);
+	if (
+		!approval ||
+		approval.status === "pending" ||
+		approval.decision === null
+	) {
+		return {
+			kind: "invalid",
+			message: `Persisted run "${input.run.runId}" cannot resume approval step "${step.id}" without matching resolved approval "${step.approvalId}".`,
+		};
+	}
+
+	return {
+		kind: "approval",
+		nextStepIndex: stepIndex + 1,
+		step,
+		decision: approval.decision,
+	};
 }
 
 async function executeCheckStep(input: {
@@ -166,6 +256,72 @@ async function executeCheckStep(input: {
 			message,
 		},
 	});
+	return input.store.appendEvent({
+		runId: input.runId,
+		event: {
+			type: "run.failed",
+			occurredAt: input.now(),
+			message,
+		},
+	});
+}
+
+function executeApprovalStep(input: {
+	runId: string;
+	step: Extract<RuntimeExecutionPlanStep, { kind: "approval" }>;
+	store: SQLiteRunStore;
+	now: () => string;
+}) {
+	input.store.appendEvent({
+		runId: input.runId,
+		event: {
+			type: "step.started",
+			occurredAt: input.now(),
+			stepId: input.step.id,
+		},
+	});
+
+	return input.store.appendEvent({
+		runId: input.runId,
+		event: {
+			type: "approval.requested",
+			occurredAt: input.now(),
+			approvalId: input.step.approvalId,
+			stepId: input.step.id,
+			...(input.step.message !== null ? { message: input.step.message } : {}),
+		},
+	});
+}
+
+function resumeApprovalStep(input: {
+	runId: string;
+	step: Extract<RuntimeExecutionPlanStep, { kind: "approval" }>;
+	decision: "approved" | "rejected";
+	store: SQLiteRunStore;
+	now: () => string;
+}) {
+	if (input.decision === "approved") {
+		return input.store.appendEvent({
+			runId: input.runId,
+			event: {
+				type: "step.completed",
+				occurredAt: input.now(),
+				stepId: input.step.id,
+			},
+		});
+	}
+
+	const message = `Approval step "${input.step.id}" was rejected.`;
+	input.store.appendEvent({
+		runId: input.runId,
+		event: {
+			type: "step.failed",
+			occurredAt: input.now(),
+			stepId: input.step.id,
+			message,
+		},
+	});
+
 	return input.store.appendEvent({
 		runId: input.runId,
 		event: {

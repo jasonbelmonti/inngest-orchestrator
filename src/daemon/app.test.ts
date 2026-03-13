@@ -412,6 +412,143 @@ describe("daemon app", () => {
 		]);
 	});
 
+	test("GET /runs/:id/events publishes resumed runtime events after approval resolution on the stock local dispatcher", async () => {
+		const harness = await createDaemonTestHarness({
+			useAppDefaultDispatch: true,
+		});
+		await Bun.write(
+			join(harness.configRoot, "workflows", "cross-repo-bugfix.json"),
+			`${JSON.stringify(makeApprovalWorkflow("printf 'shell-ok\\n'"), null, 2)}\n`,
+		);
+
+		const createResponse = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs",
+			{
+				workflowId: "cross-repo-bugfix",
+				configRoot: harness.configRoot,
+				repoBindings: harness.repoBindings,
+			},
+		);
+		expect(createResponse.status).toBe(201);
+
+		await waitFor(
+			() => harness.store.readRun("run-001")?.status === "waiting_for_approval",
+		);
+
+		const streamResponse = await dispatchDaemonRequest(
+			harness.app,
+			"GET",
+			"/runs/run-001/events",
+		);
+		expect(streamResponse.status).toBe(200);
+
+		const eventsPromise = readSseEvents(streamResponse, 8);
+
+		const resolveApprovalResponse = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-001/control",
+			{
+				action: "resolve_approval",
+				approvalId: "approval:approve",
+				decision: "approved",
+			},
+		);
+		expect(resolveApprovalResponse.status).toBe(200);
+
+		await expect(eventsPromise).resolves.toEqual([
+			{
+				id: "7",
+				event: "approval.resolved",
+				data: {
+					runId: "run-001",
+					sequence: 7,
+					type: "approval.resolved",
+					occurredAt: "2026-03-11T12:00:00.000Z",
+					approvalId: "approval:approve",
+					decision: "approved",
+				},
+			},
+			{
+				id: "8",
+				event: "step.completed",
+				data: {
+					runId: "run-001",
+					sequence: 8,
+					type: "step.completed",
+					occurredAt: "2026-03-11T12:00:00.000Z",
+					stepId: "approve",
+				},
+			},
+			{
+				id: "9",
+				event: "step.started",
+				data: {
+					runId: "run-001",
+					sequence: 9,
+					type: "step.started",
+					occurredAt: "2026-03-11T12:00:00.000Z",
+					stepId: "typecheck",
+				},
+			},
+			{
+				id: "10",
+				event: "artifact.created",
+				data: expect.objectContaining({
+					runId: "run-001",
+					sequence: 10,
+					type: "artifact.created",
+					stepId: "typecheck",
+				}),
+			},
+			{
+				id: "11",
+				event: "step.completed",
+				data: {
+					runId: "run-001",
+					sequence: 11,
+					type: "step.completed",
+					occurredAt: "2026-03-11T12:00:00.000Z",
+					stepId: "typecheck",
+				},
+			},
+			{
+				id: "12",
+				event: "step.started",
+				data: {
+					runId: "run-001",
+					sequence: 12,
+					type: "step.started",
+					occurredAt: "2026-03-11T12:00:00.000Z",
+					stepId: "terminal",
+				},
+			},
+			{
+				id: "13",
+				event: "step.completed",
+				data: {
+					runId: "run-001",
+					sequence: 13,
+					type: "step.completed",
+					occurredAt: "2026-03-11T12:00:00.000Z",
+					stepId: "terminal",
+				},
+			},
+			{
+				id: "14",
+				event: "run.completed",
+				data: {
+					runId: "run-001",
+					sequence: 14,
+					type: "run.completed",
+					occurredAt: "2026-03-11T12:00:00.000Z",
+				},
+			},
+		]);
+	});
+
 	test("GET /runs/:id/events replays from Last-Event-ID and continues live", async () => {
 		const harness = await createDaemonTestHarness();
 		await seedActiveStepRun(harness, "run-replay");
@@ -767,6 +904,79 @@ describe("daemon app", () => {
 						comment: "",
 					}),
 				],
+			}),
+		});
+	});
+
+	test("POST /runs/:id/control does not redispatch non-runtime approvals on the stock local dispatcher", async () => {
+		const harness = await createDaemonTestHarness({
+			useAppDefaultDispatch: true,
+		});
+		await seedActiveStepRun(harness, "run-bug");
+
+		const requestApproval = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-bug/control",
+			{
+				action: "request_approval",
+				approvalId: "approval-bug",
+				stepId: "implement",
+			},
+		);
+		expect(requestApproval.status).toBe(200);
+
+		const resolveApproval = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-bug/control",
+			{
+				action: "resolve_approval",
+				approvalId: "approval-bug",
+				decision: "approved",
+			},
+		);
+		expect(resolveApproval.status).toBe(200);
+
+		await Bun.sleep(20);
+
+		expect(harness.store.readRun("run-bug")).toMatchObject({
+			runId: "run-bug",
+			status: "running",
+			currentStepId: "implement",
+			latestEventSequence: 5,
+			failureMessage: null,
+			approvals: [
+				expect.objectContaining({
+					approvalId: "approval-bug",
+					status: "approved",
+				}),
+			],
+		});
+	});
+
+	test("POST /runs/:id/control rejects operator approval ids in the reserved runtime namespace", async () => {
+		const harness = await createDaemonTestHarness();
+		await seedActiveStepRun(harness, "run-reserved-approval");
+
+		const response = await dispatchDaemonRequest(
+			harness.app,
+			"POST",
+			"/runs/run-reserved-approval/control",
+			{
+				action: "request_approval",
+				approvalId: "approval:implement",
+				stepId: "implement",
+			},
+		);
+
+		expect(response.status).toBe(400);
+		expect(await expectJson(response)).toMatchObject({
+			ok: false,
+			error: expect.objectContaining({
+				code: "invalid_http_input",
+				message:
+					'"approvalId" must not start with "approval:" because that prefix is reserved for runtime-generated approval gates.',
 			}),
 		});
 	});
@@ -1340,4 +1550,83 @@ function parseSseMessage(message: string) {
 		event,
 		data: data === null ? null : JSON.parse(data),
 	};
+}
+
+function makeApprovalWorkflow(command: string) {
+	return makeWorkflow({
+		nodes: [
+			{
+				id: "trigger",
+				kind: "trigger" as const,
+				label: "Manual Trigger",
+				phaseId: "intake",
+				settings: { template: "trigger.manual" as const },
+			},
+			{
+				id: "implement",
+				kind: "task" as const,
+				label: "Implement",
+				phaseId: "implementation",
+				target: { repoId: "agent-console" },
+				settings: {
+					template: "task.agent" as const,
+					prompt: "Patch the bug and summarize the diff.",
+				},
+			},
+			{
+				id: "approve",
+				kind: "gate" as const,
+				label: "Approve",
+				phaseId: "output",
+				settings: {
+					template: "gate.approval" as const,
+					message: "Approve the patch",
+				},
+			},
+			{
+				id: "typecheck",
+				kind: "check" as const,
+				label: "Typecheck",
+				phaseId: "output",
+				target: { repoId: "agent-console" },
+				settings: {
+					template: "check.shell" as const,
+					command,
+				},
+			},
+			{
+				id: "terminal",
+				kind: "terminal" as const,
+				label: "Done",
+				phaseId: "output",
+				settings: { template: "terminal.complete" as const },
+			},
+		],
+		edges: [
+			{
+				id: "edge-trigger-implement",
+				sourceId: "trigger",
+				targetId: "implement",
+				condition: "always" as const,
+			},
+			{
+				id: "edge-implement-approve",
+				sourceId: "implement",
+				targetId: "approve",
+				condition: "on_success" as const,
+			},
+			{
+				id: "edge-approve-typecheck",
+				sourceId: "approve",
+				targetId: "typecheck",
+				condition: "on_approval" as const,
+			},
+			{
+				id: "edge-typecheck-terminal",
+				sourceId: "typecheck",
+				targetId: "terminal",
+				condition: "on_success" as const,
+			},
+		],
+	});
 }

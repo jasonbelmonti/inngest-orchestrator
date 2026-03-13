@@ -162,6 +162,26 @@ export function createRuntimeExecutionPlanFromCompiledWorkflow(input: {
 				});
 				break;
 			}
+			case "gate.approval": {
+				steps.push({
+					id: currentNode.id,
+					kind: "approval",
+					template: currentNode.template,
+					label: currentNode.label,
+					approvalId: createRuntimeApprovalId(currentNode.id),
+					message:
+						readOptionalString(currentNode.settings.message) ??
+						`Approval required for "${currentNode.label}".`,
+					rejectionOutcome: "fail",
+				});
+				currentNodeId = readRequiredSuccessor({
+					nodeId: currentNode.id,
+					nodeKind: currentNode.kind,
+					outgoingBySource,
+					issues,
+				});
+				break;
+			}
 			case "terminal.complete": {
 				const outgoing = outgoingBySource.get(currentNode.id) ?? [];
 				if (outgoing.length > 0) {
@@ -183,11 +203,10 @@ export function createRuntimeExecutionPlanFromCompiledWorkflow(input: {
 				currentNodeId = null;
 				break;
 			}
-			case "gate.approval":
 			case "artifact.capture":
 				issues.push({
 					code: "unsupported_runtime_template",
-					message: `Template "${currentNode.template}" is not supported in BEL-371 runtime planning.`,
+					message: `Template "${currentNode.template}" is not supported in the current runtime planning subset.`,
 					path: `$.nodes.${currentNode.id}.settings.template`,
 				});
 				currentNodeId = null;
@@ -260,7 +279,7 @@ function validateWorkflowSnapshot(input: {
 
 function readRequiredSuccessor(input: {
 	nodeId: string;
-	nodeKind: "trigger" | "task" | "check";
+	nodeKind: "trigger" | "task" | "check" | "gate";
 	outgoingBySource: Map<
 		string,
 		Array<{ sourceId: string; targetId: string; condition: string }>
@@ -268,8 +287,7 @@ function readRequiredSuccessor(input: {
 	issues: RuntimeIssue[];
 }) {
 	const outgoing = input.outgoingBySource.get(input.nodeId) ?? [];
-	const expectedCondition =
-		input.nodeKind === "trigger" ? "always" : "on_success";
+	const expectedCondition = readExpectedSuccessorCondition(input.nodeKind);
 	const unexpected = outgoing.filter(
 		(edge) => edge.condition !== expectedCondition,
 	);
@@ -295,6 +313,20 @@ function readRequiredSuccessor(input: {
 	}
 
 	return expectedEdge.targetId;
+}
+
+function readExpectedSuccessorCondition(
+	nodeKind: "trigger" | "task" | "check" | "gate",
+) {
+	switch (nodeKind) {
+		case "trigger":
+			return "always";
+		case "gate":
+			return "on_approval";
+		case "task":
+		case "check":
+			return "on_success";
+	}
 }
 
 function resolveTarget(
@@ -340,4 +372,8 @@ function readRequiredString(input: {
 
 function readOptionalString(value: unknown) {
 	return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function createRuntimeApprovalId(stepId: string) {
+	return `approval:${stepId}`;
 }
